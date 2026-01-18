@@ -43,6 +43,7 @@ DEFAULT_CATEGORIES = [
     "payloads",
     "templates",
     "notes",
+    "reports",  # Software error reports and bug tracking
 ]
 
 # Category descriptions for documentation
@@ -59,6 +60,7 @@ CATEGORY_DESCRIPTIONS = {
     "payloads": "Useful payloads for various attack types",
     "templates": "Report templates, code templates, and boilerplates",
     "notes": "Quick notes and temporary findings",
+    "reports": "Software error reports, bugs, and issue tracking for Strix itself",
 }
 
 # Runtime storage for dynamically created categories

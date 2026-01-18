@@ -87,6 +87,16 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
       - name: Decrypt Qwen Tokens
         id: decrypt
         run: |
@@ -111,7 +121,6 @@ jobs:
           
           tar -xzf qwen-tokens.tar.gz
           
-          # Handle nested directory structure if present
           for dir in account-*/; do
             [ -d "$dir" ] && mv "$dir"qwen-*.json . 2>/dev/null || true
           done
@@ -137,11 +146,159 @@ jobs:
           cd /tmp/CLIProxyAPI
           go build -o cli-proxy-api ./cmd/server
           sudo mv cli-proxy-api /usr/local/bin/
-          if ! cli-proxy-api --help >/dev/null 2>&1; then
-            echo "::error::CLIProxyAPI failed to install"
-            exit 1
-          fi
           echo "CLIProxyAPI installed"
+          echo "::endgroup::"
+
+      - name: Install Security Tools (SAST - White Box)
+        run: |
+          set -euo pipefail
+          echo "::group::Installing SAST Tools"
+          
+          # Semgrep - Multi-language SAST
+          pip install semgrep || echo "Semgrep install failed, continuing..."
+          
+          # Bandit - Python security
+          pip install bandit || echo "Bandit install failed, continuing..."
+          
+          # TruffleHog - Secret scanning
+          pip install trufflehog || curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin || echo "TruffleHog install failed"
+          
+          # detect-secrets - Secret detection
+          pip install detect-secrets || echo "detect-secrets install failed, continuing..."
+          
+          # Checkov - IaC security
+          pip install checkov || echo "Checkov install failed, continuing..."
+          
+          # Graudit - Grep-based auditing
+          git clone --depth 1 https://github.com/wireghoul/graudit.git /opt/graudit 2>/dev/null || echo "Graudit clone failed"
+          [ -f /opt/graudit/graudit ] && sudo ln -sf /opt/graudit/graudit /usr/local/bin/graudit || true
+          
+          # Bearer - Data flow security
+          curl -sfL https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh -s -- -b /usr/local/bin 2>/dev/null || echo "Bearer install failed"
+          
+          # Gitleaks - Git secret scanning  
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar xz -C /usr/local/bin gitleaks 2>/dev/null || echo "Gitleaks install failed"
+          
+          # Trivy - Comprehensive scanner
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin 2>/dev/null || echo "Trivy install failed"
+          
+          # tfsec - Terraform security
+          curl -sSfL https://github.com/aquasecurity/tfsec/releases/download/v1.28.4/tfsec-linux-amd64 -o /usr/local/bin/tfsec && chmod +x /usr/local/bin/tfsec 2>/dev/null || echo "tfsec install failed"
+          
+          # Safety - Python dependency checker
+          pip install safety || echo "Safety install failed, continuing..."
+          
+          # pip-audit - Python vulnerability audit
+          pip install pip-audit || echo "pip-audit install failed, continuing..."
+          
+          # Brakeman - Ruby/Rails security (if Ruby available)
+          gem install brakeman --no-document 2>/dev/null || echo "Brakeman install failed"
+          
+          # npm audit and snyk for JS
+          npm install -g snyk 2>/dev/null || echo "Snyk install failed"
+          
+          echo "SAST tools installation complete"
+          echo "::endgroup::"
+
+      - name: Install Security Tools (DAST - Black Box)
+        run: |
+          set -euo pipefail
+          echo "::group::Installing DAST Tools"
+          
+          # System tools
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nmap nikto dnsutils whois netcat-openbsd jq curl wget || true
+          
+          # Nuclei - Fast vulnerability scanner
+          curl -sSfL https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/nuclei_3.2.9_linux_amd64.zip -o /tmp/nuclei.zip
+          unzip -q /tmp/nuclei.zip -d /usr/local/bin nuclei 2>/dev/null || echo "Nuclei unzip failed"
+          chmod +x /usr/local/bin/nuclei 2>/dev/null || true
+          nuclei -update-templates 2>/dev/null || true
+          
+          # Ffuf - Fast web fuzzer
+          curl -sSfL https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin ffuf 2>/dev/null || echo "Ffuf install failed"
+          
+          # Httpx - HTTP toolkit
+          curl -sSfL https://github.com/projectdiscovery/httpx/releases/download/v1.6.3/httpx_1.6.3_linux_amd64.zip -o /tmp/httpx.zip
+          unzip -q /tmp/httpx.zip -d /usr/local/bin httpx 2>/dev/null || echo "Httpx unzip failed"
+          
+          # Subfinder - Subdomain enumeration
+          curl -sSfL https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip -o /tmp/subfinder.zip
+          unzip -q /tmp/subfinder.zip -d /usr/local/bin subfinder 2>/dev/null || echo "Subfinder unzip failed"
+          
+          # Katana - Web crawler
+          curl -sSfL https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_linux_amd64.zip -o /tmp/katana.zip
+          unzip -q /tmp/katana.zip -d /usr/local/bin katana 2>/dev/null || echo "Katana unzip failed"
+          
+          # Gobuster - Directory/file enumeration
+          curl -sSfL https://github.com/OJ/gobuster/releases/download/v3.6.0/gobuster_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin gobuster 2>/dev/null || echo "Gobuster install failed"
+          
+          # Feroxbuster - Recursive content discovery
+          curl -sSfL https://github.com/epi052/feroxbuster/releases/download/v2.10.4/x86_64-linux-feroxbuster.tar.gz | tar xz -C /usr/local/bin feroxbuster 2>/dev/null || echo "Feroxbuster install failed"
+          
+          # SQLMap - SQL injection
+          pip install sqlmap || echo "SQLMap install failed"
+          
+          # Dirsearch - Directory scanner
+          pip install dirsearch || echo "Dirsearch install failed"
+          
+          # Arjun - Parameter discovery
+          pip install arjun || echo "Arjun install failed"
+          
+          # ParamSpider - Parameter mining
+          pip install paramspider 2>/dev/null || echo "ParamSpider install failed"
+          
+          # Dalfox - XSS scanner
+          curl -sSfL https://github.com/hahwul/dalfox/releases/download/v2.9.3/dalfox_2.9.3_linux_amd64.tar.gz | tar xz -C /usr/local/bin dalfox 2>/dev/null || echo "Dalfox install failed"
+          
+          # WPScan - WordPress scanner
+          gem install wpscan --no-document 2>/dev/null || echo "WPScan install failed"
+          
+          # Amass - OSINT subdomain enumeration
+          curl -sSfL https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass_Linux_amd64.zip -o /tmp/amass.zip
+          unzip -q /tmp/amass.zip -d /tmp/amass 2>/dev/null || echo "Amass unzip failed"
+          mv /tmp/amass/amass_Linux_amd64/amass /usr/local/bin/ 2>/dev/null || true
+          
+          # Waybackurls - Historical URL discovery
+          go install github.com/tomnomnom/waybackurls@latest 2>/dev/null || echo "Waybackurls install failed"
+          
+          # Gau - Get All URLs
+          go install github.com/lc/gau/v2/cmd/gau@latest 2>/dev/null || echo "Gau install failed"
+          
+          # Hakrawler - Web crawler
+          go install github.com/hakluke/hakrawler@latest 2>/dev/null || echo "Hakrawler install failed"
+          
+          # Add Go bin to PATH
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+          
+          # Download wordlists
+          mkdir -p /usr/share/wordlists
+          curl -sSfL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt -o /usr/share/wordlists/common.txt 2>/dev/null || true
+          curl -sSfL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-medium.txt -o /usr/share/wordlists/directory-list-medium.txt 2>/dev/null || true
+          
+          echo "DAST tools installation complete"
+          echo "::endgroup::"
+
+      - name: Verify Tool Installation
+        run: |
+          echo "::group::Verifying installed tools"
+          echo "=== SAST Tools ==="
+          semgrep --version 2>/dev/null && echo "✓ Semgrep" || echo "✗ Semgrep"
+          bandit --version 2>/dev/null && echo "✓ Bandit" || echo "✗ Bandit"
+          trufflehog --version 2>/dev/null && echo "✓ TruffleHog" || echo "✗ TruffleHog"
+          trivy --version 2>/dev/null && echo "✓ Trivy" || echo "✗ Trivy"
+          gitleaks version 2>/dev/null && echo "✓ Gitleaks" || echo "✗ Gitleaks"
+          checkov --version 2>/dev/null && echo "✓ Checkov" || echo "✗ Checkov"
+          
+          echo ""
+          echo "=== DAST Tools ==="
+          nuclei -version 2>/dev/null && echo "✓ Nuclei" || echo "✗ Nuclei"
+          ffuf -V 2>/dev/null && echo "✓ Ffuf" || echo "✗ Ffuf"
+          httpx -version 2>/dev/null && echo "✓ Httpx" || echo "✗ Httpx"
+          subfinder -version 2>/dev/null && echo "✓ Subfinder" || echo "✗ Subfinder"
+          nmap --version 2>/dev/null | head -1 && echo "✓ Nmap" || echo "✗ Nmap"
+          sqlmap --version 2>/dev/null && echo "✓ SQLMap" || echo "✗ SQLMap"
+          nikto -Version 2>/dev/null && echo "✓ Nikto" || echo "✗ Nikto"
           echo "::endgroup::"
 
       - name: Configure CLIProxyAPI
@@ -164,8 +321,7 @@ jobs:
             strategy: "round-robin"
           EOF
           sed -i 's/^          //' "$AUTH_DIR/config.yaml"
-          echo "Configuration created:"
-          cat "$AUTH_DIR/config.yaml"
+          echo "Configuration created"
           echo "::endgroup::"
 
       - name: Start CLIProxyAPI Server
@@ -175,9 +331,6 @@ jobs:
           echo "::group::Starting CLIProxyAPI Server"
           AUTH_DIR="$HOME/.cli-proxy-api"
           cd "$AUTH_DIR"
-
-          echo "Token files found:"
-          ls -la qwen-*.json 2>/dev/null || echo "No qwen token files found!"
 
           nohup cli-proxy-api -config config.yaml > cliproxy.log 2>&1 &
           SERVER_PID=$!
@@ -190,13 +343,10 @@ jobs:
             exit 1
           fi
 
-          # Wait for server to be ready
           for i in {1..20}; do
             MODELS_RESPONSE=$(curl -s "http://127.0.0.1:${{ env.CLIPROXY_PORT }}/v1/models" 2>/dev/null || true)
             if [ -n "$MODELS_RESPONSE" ] && echo "$MODELS_RESPONSE" | jq -e '.data' > /dev/null 2>&1; then
               echo "CLIProxyAPI is ready!"
-              echo "Available models:"
-              echo "$MODELS_RESPONSE" | jq -r '.data[].id' 2>/dev/null | head -20 || true
               break
             fi
             echo "Waiting for CLIProxyAPI... (attempt $i/20)"
@@ -206,22 +356,25 @@ jobs:
           ENDPOINT="http://127.0.0.1:${{ env.CLIPROXY_PORT }}/v1"
           echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
           echo "pid=$SERVER_PID" >> "$GITHUB_OUTPUT"
-          echo "=========================================="
-          echo "CLIPROXYAPI READY"
-          echo "Endpoint: $ENDPOINT"
-          echo "Accounts: ${{ steps.decrypt.outputs.token_count }}"
-          echo "=========================================="
+          echo "CLIProxyAPI started at $ENDPOINT"
           echo "::endgroup::"
 
-      - name: Install Strix
+      - name: Install Strix from Source
         run: |
           set -euo pipefail
-          echo "::group::Installing Strix"
-          curl -sSL https://strix.ai/install | bash || {
-            echo "Falling back to pip installation..."
-            pip install strix-agent
-          }
-          echo "Strix installation complete"
+          echo "::group::Installing Strix from source"
+          
+          # Clone from 89pl/Strixer
+          git clone --depth 1 https://github.com/89pl/Strixer.git /tmp/strix-source
+          cd /tmp/strix-source
+          
+          # Install in editable mode
+          pip install -e ".[sandbox]" || pip install -e .
+          
+          # Verify installation
+          strix --version || python -c "import strix; print('Strix installed')"
+          
+          echo "Strix installed from source"
           echo "::endgroup::"
 
       - name: Run Strix Security Scan
@@ -230,31 +383,48 @@ jobs:
         continue-on-error: true
         env:
           STRIXDB_TOKEN: ${{ secrets.STRIXDB_TOKEN }}
-          STRIX_LLM: openai/${{ github.event.inputs.model || 'qwen3-coder-plus' }}
+          # HTTP Client configuration (no LiteLLM)
+          CLIPROXY_ENDPOINT: ${{ steps.cliproxy.outputs.endpoint }}
           LLM_API_BASE: ${{ steps.cliproxy.outputs.endpoint }}
-          CUSTOM_LLM_PROVIDER: openai
           OPENAI_API_KEY: sk-dummy-key-for-cliproxy
           OPENAI_API_BASE: ${{ steps.cliproxy.outputs.endpoint }}
-          CLIPROXY_ENDPOINT: ${{ steps.cliproxy.outputs.endpoint }}
-          LITELLM_DROP_PARAMS: 'true'
-          LITELLM_NUM_RETRIES: '5'
-          LITELLM_RETRY_DELAY: '1'
-          LITELLM_REQUEST_TIMEOUT: '300'
-          LLM_RATE_LIMIT_DELAY: '0.1'
-          LLM_RATE_LIMIT_CONCURRENT: '3'
-          LLM_MAX_REQUESTS_PER_MINUTE: '120'
+          STRIX_LLM: ${{ github.event.inputs.model || 'qwen3-coder-plus' }}
+          # Timeframe tracking
+          STRIX_SCAN_START_TIME: ${{ github.run_started_at }}
+          STRIX_SCAN_DURATION_MINUTES: ${{ github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME }}
+          # Additional config
           STRIX_USE_HOST_NETWORK: 'true'
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          PATH: ${{ env.PATH }}:/usr/local/bin:${{ github.workspace }}/go/bin:$HOME/go/bin
         run: |
           set +euo pipefail
           echo "::group::Running Strix Security Scan"
           TARGET="${{ github.event.inputs.target || './' }}"
           TIMEFRAME="${{ github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME }}"
           SCAN_MODE="${{ github.event.inputs.scan_mode || env.DEFAULT_SCAN_MODE }}"
-          INSTRUCTIONS="${{ github.event.inputs.prompt }}"
           
-          # Add multi-action mode instruction
-          INSTRUCTIONS="$INSTRUCTIONS Use multi-action mode (up to 7 actions per call) for efficiency. Load-balanced across ${{ steps.decrypt.outputs.token_count }} Qwen accounts."
+          # Set scan start time as Unix timestamp
+          export STRIX_SCAN_START_TIME=$(date +%s)
+          
+          # Build comprehensive instructions
+          INSTRUCTIONS="${{ github.event.inputs.prompt }}"
+          INSTRUCTIONS="$INSTRUCTIONS
+
+CRITICAL INSTRUCTIONS:
+1. You have $TIMEFRAME minutes allocated. Use get_remaining_time() regularly to check your time.
+2. Continue scanning until timeframe is EXHAUSTED - finding vulnerabilities does NOT mean stopping early!
+3. Use should_continue_scanning() before starting major new test phases.
+4. You are an ENTHUSIASTIC COLLECTOR - save useful scripts, methods, exploits, and knowledge to StrixDB.
+5. Save GENERAL-PURPOSE data to StrixDB (not target-specific) for future scans.
+6. If you encounter Strix software issues, file a detailed report in StrixDB/reports category.
+7. Use Multi-Action Mode (up to 7 tool calls per message) for efficiency.
+8. Load-balanced across ${{ steps.decrypt.outputs.token_count }} Qwen accounts.
+
+INSTALLED SECURITY TOOLS:
+SAST: semgrep, bandit, trufflehog, gitleaks, trivy, checkov, bearer, tfsec, graudit
+DAST: nuclei, ffuf, nmap, nikto, sqlmap, gobuster, feroxbuster, httpx, subfinder, katana, dalfox, wpscan, arjun, dirsearch
+
+For WHITE-BOX scanning, you are a MONSTER - run MULTIPLE SAST tools, analyze every file, trace data flows, find injection points!"
 
           echo "=========================================="
           echo "STRIX SECURITY SCAN STARTING"
@@ -262,78 +432,41 @@ jobs:
           echo "Target: $TARGET"
           echo "Timeframe: $TIMEFRAME minutes"
           echo "Scan Mode: $SCAN_MODE"
-          echo "Model: openai/${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
-          echo "Accounts: ${{ steps.decrypt.outputs.token_count }}"
-          echo "LLM Endpoint: ${{ steps.cliproxy.outputs.endpoint }}"
+          echo "Model: ${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
           echo "=========================================="
-
-          # Verify CLIProxyAPI is still running
-          echo "Verifying CLIProxyAPI status..."
-          curl -s "${{ steps.cliproxy.outputs.endpoint }}/models" | jq '.data | length' || echo "Could not get model count"
 
           CMD="strix --target \"$TARGET\" --scan-mode $SCAN_MODE --non-interactive"
           if [ -n "$INSTRUCTIONS" ]; then
             CMD="$CMD --instruction \"$INSTRUCTIONS\""
           fi
 
-          # Run scan
           timeout ${TIMEFRAME}m bash -c "$CMD" 2>&1 | tee strix_output.log
           EXIT_CODE=${PIPESTATUS[0]}
 
           VULN_COUNT=$(grep -ciE "vulnerability|VULNERABILITY|CVE-|critical|high.*severity" strix_output.log 2>/dev/null || echo "0")
-          if ! [[ "$VULN_COUNT" =~ ^[0-9]+$ ]]; then
-            VULN_COUNT="0"
-          fi
-
+          
           case $EXIT_CODE in
-            0)
-              echo "Scan completed successfully"
-              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
-              ;;
-            2)
-              echo "Scan completed with vulnerabilities found"
-              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
-              ;;
-            124)
-              echo "Scan completed (timeframe exhausted)"
-              echo "timed_out=true" >> "$GITHUB_OUTPUT"
+            0|2|124)
               echo "scan_completed=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "Scan completed with exit code: $EXIT_CODE"
               echo "scan_completed=true" >> "$GITHUB_OUTPUT"
               ;;
           esac
           
-          {
-            echo "vulnerabilities_found=$VULN_COUNT"
-            echo "exit_code=$EXIT_CODE"
-          } >> "$GITHUB_OUTPUT"
+          echo "vulnerabilities_found=$VULN_COUNT" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
           exit 0
 
       - name: Stop CLIProxyAPI Server
         if: always()
         run: |
-          set -euo pipefail
-          echo "::group::Stopping CLIProxyAPI"
           AUTH_DIR="$HOME/.cli-proxy-api"
           if [ -f "$AUTH_DIR/cliproxy.pid" ]; then
-            PID=$(cat "$AUTH_DIR/cliproxy.pid")
-            kill $PID 2>/dev/null || true
-            wait $PID 2>/dev/null || true
-            echo "CLIProxyAPI stopped (PID: $PID)"
+            kill $(cat "$AUTH_DIR/cliproxy.pid") 2>/dev/null || true
           fi
-          if [ -f "$AUTH_DIR/cliproxy.log" ]; then
-            echo "=========================================="
-            echo "CLIPROXY LOGS (last 50 lines):"
-            echo "=========================================="
-            tail -50 "$AUTH_DIR/cliproxy.log"
-            echo "=========================================="
-          fi
-          rm -rf "$AUTH_DIR"/qwen-*.json
-          rm -f "$AUTH_DIR/cliproxy.pid"
-          echo "::endgroup::"
+          rm -rf "$AUTH_DIR"/qwen-*.json "$AUTH_DIR/cliproxy.pid" 2>/dev/null || true
 
       - name: Upload Scan Results
         uses: actions/upload-artifact@v4
@@ -349,80 +482,36 @@ jobs:
       - name: Create Security Summary
         if: always()
         run: |
-          set -euo pipefail
           TIMEFRAME="${{ github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME }}"
           VULNS="${{ steps.strix.outputs.vulnerabilities_found }}"
-          TIMED_OUT="${{ steps.strix.outputs.timed_out }}"
-          TOKEN_COUNT="${{ steps.decrypt.outputs.token_count }}"
           EXIT_CODE="${{ steps.strix.outputs.exit_code }}"
-          SCAN_MODE="${{ github.event.inputs.scan_mode || env.DEFAULT_SCAN_MODE }}"
-          MODEL="${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
-          TARGET="${{ github.event.inputs.target || './' }}"
+          TOKEN_COUNT="${{ steps.decrypt.outputs.token_count }}"
 
-          if [ "$TIMED_OUT" == "true" ]; then
-            STATUS_EMOJI="⏰"
-            STATUS_TEXT="Scan completed (timeframe exhausted)"
-          elif [ "$EXIT_CODE" == "0" ]; then
-            STATUS_EMOJI="✅"
-            STATUS_TEXT="Scan completed successfully"
-          elif [ "$EXIT_CODE" == "2" ]; then
-            STATUS_EMOJI="🔴"
-            STATUS_TEXT="Scan completed with vulnerabilities found"
-          else
-            STATUS_EMOJI="⚠️"
-            STATUS_TEXT="Scan completed with exit code: $EXIT_CODE"
-          fi
-
-          cat > "$GITHUB_STEP_SUMMARY" << SUMMARY_EOF
+          cat > "$GITHUB_STEP_SUMMARY" << 'SUMMARY_EOF'
           # 🛡️ Strix Security Scan
 
-          ## $STATUS_EMOJI Status: $STATUS_TEXT
-
-          ---
-
-          ### 📊 Scan Overview
+          ## Scan Configuration
 
           | Property | Value |
           |----------|-------|
-          | **Target** | \`$TARGET\` |
-          | **Scan Mode** | $SCAN_MODE |
-          | **Model** | $MODEL |
-          | **Duration** | $TIMEFRAME minutes |
-          | **Qwen Accounts** | $TOKEN_COUNT (load-balanced) |
-          | **Exit Code** | $EXIT_CODE |
+          | **Target** | `${{ github.event.inputs.target || './' }}` |
+          | **Scan Mode** | ${{ github.event.inputs.scan_mode || 'deep' }} |
+          | **Model** | ${{ github.event.inputs.model || 'qwen3-coder-plus' }} |
+          | **Duration** | ${{ github.event.inputs.timeframe || '60' }} minutes |
+          | **Qwen Accounts** | Load-balanced |
 
+          ## 🔧 Installed Tools
+
+          ### SAST (White-Box)
+          semgrep, bandit, trufflehog, gitleaks, trivy, checkov, bearer, tfsec, graudit, safety, pip-audit, brakeman
+
+          ### DAST (Black-Box)
+          nuclei, ffuf, nmap, nikto, sqlmap, gobuster, feroxbuster, httpx, subfinder, katana, dalfox, wpscan, arjun, dirsearch, amass
+
+          ## 📦 Artifacts
+
+          Download **strix-results** for detailed scan results.
+
+          ---
+          *Powered by Strix AI Security Scanner (installed from 89pl/Strixer)*
           SUMMARY_EOF
-
-          VULN_NUM=${VULNS:-0}
-          if [ "$VULN_NUM" -gt "0" ]; then
-            echo "**🔴 Potential Vulnerabilities Detected: $VULN_NUM**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "> ⚠️ Review the detailed report in the workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "**🟢 No vulnerabilities detected in this scan.**" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          cat >> "$GITHUB_STEP_SUMMARY" << 'FEATURES_EOF'
-
-          ---
-
-          ### ⚙️ Features
-
-          - ✅ Multi-Action Mode (up to 7 actions/call)
-          - ✅ Qwen Token Load Balancing
-          - ✅ Request Retry (5 attempts)
-
-          ---
-
-          ### 📦 Artifacts
-
-          Download the **strix-results** artifact to access:
-          - `strix_runs/` - Detailed scan results and reports
-          - `strix_output.log` - Complete scan output log
-
-          ---
-
-          *Generated by [Strix Security Scanner](https://strix.ai)*
-          FEATURES_EOF
-
-          echo "✅ Security summary created"

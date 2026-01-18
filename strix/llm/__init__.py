@@ -1,19 +1,15 @@
-import logging
-import warnings
+"""LLM module for Strix - HTTP-based LLM client."""
 
-import litellm
-
-from .config import LLMConfig
-from .llm import LLM, LLMRequestFailedError
-
+from strix.llm.http_client import (
+    LLMClient,
+    chat,
+    get_llm_client,
+    stream_chat,
+)
 
 __all__ = [
-    "LLM",
-    "LLMConfig",
-    "LLMRequestFailedError",
+    "LLMClient",
+    "chat",
+    "get_llm_client",
+    "stream_chat",
 ]
-
-litellm._logging._disable_debugging()
-logging.getLogger("asyncio").setLevel(logging.CRITICAL)
-logging.getLogger("asyncio").propagate = False
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="asyncio")

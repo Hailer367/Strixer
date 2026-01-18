@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <tool>
+    <name>strixdb_create_category</name>
+    <description>Create a new category in StrixDB for organizing artifacts.</description>
+    <parameters>
+      <parameter>
+        <name>category_name</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Name of the new category (lowercase, no spaces)</description>
+      </parameter>
+      <parameter>
+        <name>description</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Description of what this category is for</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_save</name>
+    <description>Save an item to StrixDB. Use this to permanently store useful artifacts like scripts, exploits, knowledge, tools, and other items for future reference.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Category for the item (scripts, exploits, knowledge, tools, configs, wordlists, payloads, templates, notes, or custom)</description>
+      </parameter>
+      <parameter>
+        <name>name</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Name of the item</description>
+      </parameter>
+      <parameter>
+        <name>content</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Content to save</description>
+      </parameter>
+      <parameter>
+        <name>description</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Description of the item</description>
+      </parameter>
+      <parameter>
+        <name>tags</name>
+        <type>array</type>
+        <required>false</required>
+        <description>List of tags for categorization</description>
+      </parameter>
+      <parameter>
+        <name>content_type</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Type of content (text, script, json, python, javascript, yaml)</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_search</name>
+    <description>Search for items in StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>query</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Search query (searches name, description, and content)</description>
+      </parameter>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Optional category filter</description>
+      </parameter>
+      <parameter>
+        <name>tags</name>
+        <type>array</type>
+        <required>false</required>
+        <description>Optional tags filter</description>
+      </parameter>
+      <parameter>
+        <name>limit</name>
+        <type>integer</type>
+        <required>false</required>
+        <description>Maximum number of results (default: 20)</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_get</name>
+    <description>Retrieve a specific item from StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Category of the item</description>
+      </parameter>
+      <parameter>
+        <name>name</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Name of the item</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_list</name>
+    <description>List items in StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Optional category to list (None for all categories)</description>
+      </parameter>
+      <parameter>
+        <name>limit</name>
+        <type>integer</type>
+        <required>false</required>
+        <description>Maximum number of items to return (default: 50)</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_update</name>
+    <description>Update an existing item in StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Category of the item</description>
+      </parameter>
+      <parameter>
+        <name>name</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Name of the item</description>
+      </parameter>
+      <parameter>
+        <name>content</name>
+        <type>string</type>
+        <required>true</required>
+        <description>New content</description>
+      </parameter>
+      <parameter>
+        <name>description</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Optional new description</description>
+      </parameter>
+      <parameter>
+        <name>tags</name>
+        <type>array</type>
+        <required>false</required>
+        <description>Optional new tags</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_delete</name>
+    <description>Delete an item from StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Category of the item</description>
+      </parameter>
+      <parameter>
+        <name>name</name>
+        <type>string</type>
+        <required>true</required>
+        <description>Name of the item</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_get_categories</name>
+    <description>Get all available categories in StrixDB with their descriptions.</description>
+    <parameters></parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_get_stats</name>
+    <description>Get statistics about the StrixDB repository.</description>
+    <parameters></parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_get_config_status</name>
+    <description>Get the current StrixDB configuration status. Useful for debugging.</description>
+    <parameters></parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_export</name>
+    <description>Export items from StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>category</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Optional category to export (None for all)</description>
+      </parameter>
+      <parameter>
+        <name>format</name>
+        <type>string</type>
+        <required>false</required>
+        <description>Export format (json or markdown)</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool>
+    <name>strixdb_import_item</name>
+    <description>Import an item to StrixDB.</description>
+    <parameters>
+      <parameter>
+        <name>item_data</name>
+        <type>object</type>
+        <required>true</required>
+        <description>Dictionary with item data (category, name, content, description, tags, content_type)</description>
+      </parameter>
+    </parameters>
+  </tool>
+</tools>

@@ -1,0 +1,428 @@
+name: strix-penetration-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      decryption_password:
+        description: 'Password to decrypt QWEN_TOKENS'
+        required: true
+        type: string
+      target:
+        description: 'Target to scan (URL, path, or repository)'
+        required: false
+        default: './'
+        type: string
+      prompt:
+        description: 'Custom instructions for the AI agent'
+        required: false
+        default: ''
+        type: string
+      timeframe:
+        description: 'Maximum runtime in minutes (10-720)'
+        required: false
+        default: '60'
+        type: choice
+        options:
+          - '10'
+          - '15'
+          - '30'
+          - '60'
+          - '90'
+          - '120'
+          - '180'
+          - '240'
+          - '360'
+          - '480'
+          - '720'
+      scan_mode:
+        description: 'Scan mode'
+        required: false
+        default: 'deep'
+        type: choice
+        options:
+          - quick
+          - standard
+          - deep
+      model:
+        description: 'AI Model to use'
+        required: false
+        default: 'qwen3-coder-plus'
+        type: choice
+        options:
+          - 'qwen3-coder-plus'
+          - 'qwen3-coder-flash'
+          - 'qwen3-max'
+          - 'qwen-plus'
+  pull_request:
+
+concurrency:
+  group: strix-scan-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_TIMEFRAME: '60'
+  DEFAULT_SCAN_MODE: 'deep'
+  CLIPROXY_PORT: '8317'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(github.event.inputs.timeframe || '60') }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Decrypt Qwen Tokens
+        id: decrypt
+        run: |
+          set -euo pipefail
+          echo "::group::Decrypting Qwen tokens"
+          
+          if [ -z "${{ secrets.QWEN_TOKENS }}" ]; then
+            echo "::error::QWEN_TOKENS secret is not set"
+            echo "Please run the Qwen.yml workflow first to collect tokens."
+            exit 1
+          fi
+          
+          mkdir -p ~/.cli-proxy-api
+          cd ~/.cli-proxy-api
+          
+          echo "${{ secrets.QWEN_TOKENS }}" | base64 -d > qwen-tokens.enc
+          
+          if ! echo "${{ github.event.inputs.decryption_password }}" | openssl enc -aes-256-cbc -d -salt -pbkdf2 -in qwen-tokens.enc -out qwen-tokens.tar.gz -pass stdin 2>/dev/null; then
+            echo "::error::Failed to decrypt tokens. Invalid password"
+            exit 1
+          fi
+          
+          tar -xzf qwen-tokens.tar.gz
+          
+          # Handle nested directory structure if present
+          for dir in account-*/; do
+            [ -d "$dir" ] && mv "$dir"qwen-*.json . 2>/dev/null || true
+          done
+          
+          TOKEN_COUNT=$(find . -maxdepth 1 -name 'qwen-*.json' | wc -l)
+          
+          if [ "$TOKEN_COUNT" -eq 0 ]; then
+            echo "::error::No token files found after decryption"
+            exit 1
+          fi
+          
+          echo "Successfully decrypted $TOKEN_COUNT Qwen account(s)"
+          echo "token_count=$TOKEN_COUNT" >> "$GITHUB_OUTPUT"
+          
+          rm -f qwen-tokens.enc qwen-tokens.tar.gz
+          echo "::endgroup::"
+
+      - name: Install CLIProxyAPI
+        run: |
+          set -euo pipefail
+          echo "::group::Installing CLIProxyAPI"
+          git clone --depth 1 https://github.com/router-for-me/CLIProxyAPI.git /tmp/CLIProxyAPI
+          cd /tmp/CLIProxyAPI
+          go build -o cli-proxy-api ./cmd/server
+          sudo mv cli-proxy-api /usr/local/bin/
+          if ! cli-proxy-api --help >/dev/null 2>&1; then
+            echo "::error::CLIProxyAPI failed to install"
+            exit 1
+          fi
+          echo "CLIProxyAPI installed"
+          echo "::endgroup::"
+
+      - name: Configure CLIProxyAPI
+        run: |
+          set -euo pipefail
+          echo "::group::Configuring CLIProxyAPI"
+          AUTH_DIR="$HOME/.cli-proxy-api"
+          cat > "$AUTH_DIR/config.yaml" << 'EOF'
+          host: "127.0.0.1"
+          port: 8317
+          auth-dir: "~/.cli-proxy-api"
+          debug: true
+          logging-to-file: true
+          request-retry: 5
+          max-retry-interval: 60
+          quota-exceeded:
+            switch-project: true
+            switch-preview-model: true
+          routing:
+            strategy: "round-robin"
+          EOF
+          sed -i 's/^          //' "$AUTH_DIR/config.yaml"
+          echo "Configuration created:"
+          cat "$AUTH_DIR/config.yaml"
+          echo "::endgroup::"
+
+      - name: Start CLIProxyAPI Server
+        id: cliproxy
+        run: |
+          set -euo pipefail
+          echo "::group::Starting CLIProxyAPI Server"
+          AUTH_DIR="$HOME/.cli-proxy-api"
+          cd "$AUTH_DIR"
+
+          echo "Token files found:"
+          ls -la qwen-*.json 2>/dev/null || echo "No qwen token files found!"
+
+          nohup cli-proxy-api -config config.yaml > cliproxy.log 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > cliproxy.pid
+          sleep 15
+
+          if ! kill -0 $SERVER_PID 2>/dev/null; then
+            echo "::error::CLIProxyAPI failed to start"
+            cat cliproxy.log || echo "No log file"
+            exit 1
+          fi
+
+          # Wait for server to be ready
+          for i in {1..20}; do
+            MODELS_RESPONSE=$(curl -s "http://127.0.0.1:${{ env.CLIPROXY_PORT }}/v1/models" 2>/dev/null || true)
+            if [ -n "$MODELS_RESPONSE" ] && echo "$MODELS_RESPONSE" | jq -e '.data' > /dev/null 2>&1; then
+              echo "CLIProxyAPI is ready!"
+              echo "Available models:"
+              echo "$MODELS_RESPONSE" | jq -r '.data[].id' 2>/dev/null | head -20 || true
+              break
+            fi
+            echo "Waiting for CLIProxyAPI... (attempt $i/20)"
+            sleep 3
+          done
+
+          ENDPOINT="http://127.0.0.1:${{ env.CLIPROXY_PORT }}/v1"
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+          echo "pid=$SERVER_PID" >> "$GITHUB_OUTPUT"
+          echo "=========================================="
+          echo "CLIPROXYAPI READY"
+          echo "Endpoint: $ENDPOINT"
+          echo "Accounts: ${{ steps.decrypt.outputs.token_count }}"
+          echo "=========================================="
+          echo "::endgroup::"
+
+      - name: Install Strix
+        run: |
+          set -euo pipefail
+          echo "::group::Installing Strix"
+          curl -sSL https://strix.ai/install | bash || {
+            echo "Falling back to pip installation..."
+            pip install strix-agent
+          }
+          echo "Strix installation complete"
+          echo "::endgroup::"
+
+      - name: Run Strix Security Scan
+        id: strix
+        timeout-minutes: ${{ fromJSON(github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME) }}
+        continue-on-error: true
+        env:
+          STRIXDB_TOKEN: ${{ secrets.STRIXDB_TOKEN }}
+          STRIX_LLM: openai/${{ github.event.inputs.model || 'qwen3-coder-plus' }}
+          LLM_API_BASE: ${{ steps.cliproxy.outputs.endpoint }}
+          CUSTOM_LLM_PROVIDER: openai
+          OPENAI_API_KEY: sk-dummy-key-for-cliproxy
+          OPENAI_API_BASE: ${{ steps.cliproxy.outputs.endpoint }}
+          CLIPROXY_ENDPOINT: ${{ steps.cliproxy.outputs.endpoint }}
+          LITELLM_DROP_PARAMS: 'true'
+          LITELLM_NUM_RETRIES: '5'
+          LITELLM_RETRY_DELAY: '1'
+          LITELLM_REQUEST_TIMEOUT: '300'
+          LLM_RATE_LIMIT_DELAY: '0.1'
+          LLM_RATE_LIMIT_CONCURRENT: '3'
+          LLM_MAX_REQUESTS_PER_MINUTE: '120'
+          STRIX_USE_HOST_NETWORK: 'true'
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        run: |
+          set +euo pipefail
+          echo "::group::Running Strix Security Scan"
+          TARGET="${{ github.event.inputs.target || './' }}"
+          TIMEFRAME="${{ github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME }}"
+          SCAN_MODE="${{ github.event.inputs.scan_mode || env.DEFAULT_SCAN_MODE }}"
+          INSTRUCTIONS="${{ github.event.inputs.prompt }}"
+          
+          # Add multi-action mode instruction
+          INSTRUCTIONS="$INSTRUCTIONS Use multi-action mode (up to 7 actions per call) for efficiency. Load-balanced across ${{ steps.decrypt.outputs.token_count }} Qwen accounts."
+
+          echo "=========================================="
+          echo "STRIX SECURITY SCAN STARTING"
+          echo "=========================================="
+          echo "Target: $TARGET"
+          echo "Timeframe: $TIMEFRAME minutes"
+          echo "Scan Mode: $SCAN_MODE"
+          echo "Model: openai/${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
+          echo "Accounts: ${{ steps.decrypt.outputs.token_count }}"
+          echo "LLM Endpoint: ${{ steps.cliproxy.outputs.endpoint }}"
+          echo "=========================================="
+
+          # Verify CLIProxyAPI is still running
+          echo "Verifying CLIProxyAPI status..."
+          curl -s "${{ steps.cliproxy.outputs.endpoint }}/models" | jq '.data | length' || echo "Could not get model count"
+
+          CMD="strix --target \"$TARGET\" --scan-mode $SCAN_MODE --non-interactive"
+          if [ -n "$INSTRUCTIONS" ]; then
+            CMD="$CMD --instruction \"$INSTRUCTIONS\""
+          fi
+
+          # Run scan
+          timeout ${TIMEFRAME}m bash -c "$CMD" 2>&1 | tee strix_output.log
+          EXIT_CODE=${PIPESTATUS[0]}
+
+          VULN_COUNT=$(grep -ciE "vulnerability|VULNERABILITY|CVE-|critical|high.*severity" strix_output.log 2>/dev/null || echo "0")
+          if ! [[ "$VULN_COUNT" =~ ^[0-9]+$ ]]; then
+            VULN_COUNT="0"
+          fi
+
+          case $EXIT_CODE in
+            0)
+              echo "Scan completed successfully"
+              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "Scan completed with vulnerabilities found"
+              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
+              ;;
+            124)
+              echo "Scan completed (timeframe exhausted)"
+              echo "timed_out=true" >> "$GITHUB_OUTPUT"
+              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Scan completed with exit code: $EXIT_CODE"
+              echo "scan_completed=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+          
+          {
+            echo "vulnerabilities_found=$VULN_COUNT"
+            echo "exit_code=$EXIT_CODE"
+          } >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+          exit 0
+
+      - name: Stop CLIProxyAPI Server
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "::group::Stopping CLIProxyAPI"
+          AUTH_DIR="$HOME/.cli-proxy-api"
+          if [ -f "$AUTH_DIR/cliproxy.pid" ]; then
+            PID=$(cat "$AUTH_DIR/cliproxy.pid")
+            kill $PID 2>/dev/null || true
+            wait $PID 2>/dev/null || true
+            echo "CLIProxyAPI stopped (PID: $PID)"
+          fi
+          if [ -f "$AUTH_DIR/cliproxy.log" ]; then
+            echo "=========================================="
+            echo "CLIPROXY LOGS (last 50 lines):"
+            echo "=========================================="
+            tail -50 "$AUTH_DIR/cliproxy.log"
+            echo "=========================================="
+          fi
+          rm -rf "$AUTH_DIR"/qwen-*.json
+          rm -f "$AUTH_DIR/cliproxy.pid"
+          echo "::endgroup::"
+
+      - name: Upload Scan Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: strix-results-${{ github.run_id }}
+          path: |
+            strix_runs/
+            strix_output.log
+            ~/.cli-proxy-api/cliproxy.log
+          retention-days: 30
+
+      - name: Create Security Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          TIMEFRAME="${{ github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME }}"
+          VULNS="${{ steps.strix.outputs.vulnerabilities_found }}"
+          TIMED_OUT="${{ steps.strix.outputs.timed_out }}"
+          TOKEN_COUNT="${{ steps.decrypt.outputs.token_count }}"
+          EXIT_CODE="${{ steps.strix.outputs.exit_code }}"
+          SCAN_MODE="${{ github.event.inputs.scan_mode || env.DEFAULT_SCAN_MODE }}"
+          MODEL="${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
+          TARGET="${{ github.event.inputs.target || './' }}"
+
+          if [ "$TIMED_OUT" == "true" ]; then
+            STATUS_EMOJI="⏰"
+            STATUS_TEXT="Scan completed (timeframe exhausted)"
+          elif [ "$EXIT_CODE" == "0" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="Scan completed successfully"
+          elif [ "$EXIT_CODE" == "2" ]; then
+            STATUS_EMOJI="🔴"
+            STATUS_TEXT="Scan completed with vulnerabilities found"
+          else
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Scan completed with exit code: $EXIT_CODE"
+          fi
+
+          cat > "$GITHUB_STEP_SUMMARY" << SUMMARY_EOF
+          # 🛡️ Strix Security Scan
+
+          ## $STATUS_EMOJI Status: $STATUS_TEXT
+
+          ---
+
+          ### 📊 Scan Overview
+
+          | Property | Value |
+          |----------|-------|
+          | **Target** | \`$TARGET\` |
+          | **Scan Mode** | $SCAN_MODE |
+          | **Model** | $MODEL |
+          | **Duration** | $TIMEFRAME minutes |
+          | **Qwen Accounts** | $TOKEN_COUNT (load-balanced) |
+          | **Exit Code** | $EXIT_CODE |
+
+          SUMMARY_EOF
+
+          VULN_NUM=${VULNS:-0}
+          if [ "$VULN_NUM" -gt "0" ]; then
+            echo "**🔴 Potential Vulnerabilities Detected: $VULN_NUM**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> ⚠️ Review the detailed report in the workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**🟢 No vulnerabilities detected in this scan.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" << 'FEATURES_EOF'
+
+          ---
+
+          ### ⚙️ Features
+
+          - ✅ Multi-Action Mode (up to 7 actions/call)
+          - ✅ Qwen Token Load Balancing
+          - ✅ Request Retry (5 attempts)
+
+          ---
+
+          ### 📦 Artifacts
+
+          Download the **strix-results** artifact to access:
+          - `strix_runs/` - Detailed scan results and reports
+          - `strix_output.log` - Complete scan output log
+
+          ---
+
+          *Generated by [Strix Security Scanner](https://strix.ai)*
+          FEATURES_EOF
+
+          echo "✅ Security summary created"

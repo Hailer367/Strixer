@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AgentNode, ReasoningLog, DashboardStats, StrixState } from './types';
+import { AgentNode, ReasoningLog, DashboardStats, StrixState, LiveFeedEntry } from './types';
 import { INITIAL_AGENT_TREE, ICONS } from './constants';
 import StatsHeader from './components/StatsHeader';
 import AgentTreeNode from './components/AgentTreeNode';
@@ -70,7 +70,7 @@ const App: React.FC = () => {
 
       // Update live feed as logs
       if (state.live_feed) {
-        const newLogs: ReasoningLog[] = state.live_feed.map((entry, idx) => ({
+        const newLogs: ReasoningLog[] = state.live_feed.map((entry: LiveFeedEntry, idx: number) => ({
           id: entry.id || `log-${idx}`,
           timestamp: new Date(entry.timestamp).toLocaleTimeString(),
           thought: entry.message || '',

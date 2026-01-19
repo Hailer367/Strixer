@@ -1,4 +1,3 @@
-
 export enum AgentStatus {
   IDLE = 'IDLE',
   RUNNING = 'RUNNING',
@@ -93,6 +92,17 @@ export interface Stats {
   active_agents: number;
 }
 
+export interface LiveFeedEntry {
+  id?: string;
+  type?: string;
+  message?: string;
+  tool?: string;
+  input?: string;
+  output?: string;
+  severity?: string;
+  timestamp: string;
+}
+
 export interface StrixState {
   scan_config: ScanConfig;
   time: TimeInfo;
@@ -100,6 +110,6 @@ export interface StrixState {
   vulnerabilities: Vulnerability[];
   tool_executions: ToolExecution[];
   stats: Stats;
-  live_feed: any[];
+  live_feed: LiveFeedEntry[];
   last_updated: string;
 }

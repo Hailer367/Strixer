@@ -28,7 +28,7 @@ RUN apt-get update && \
     build-essential software-properties-common \
     gcc libc6-dev pkg-config libpcap-dev libssl-dev \
     python3 python3-pip python3-dev python3-venv python3-setuptools \
-    golang-go \
+    golang-go rustc cargo \
     net-tools dnsutils whois \
     jq parallel ripgrep grep \
     less man-db procps htop \

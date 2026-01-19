@@ -61,6 +61,14 @@ on:
         options:
           - 'true'
           - 'false'
+      enable_dashboard:
+        description: 'Enable real-time web dashboard'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   pull_request:
 
 concurrency:
@@ -71,6 +79,7 @@ env:
   DEFAULT_TIMEFRAME: '60'
   DEFAULT_SCAN_MODE: 'deep'
   CLIPROXY_PORT: '8317'
+  DASHBOARD_PORT: '8080'
 
 jobs:
   security-scan:
@@ -143,7 +152,6 @@ jobs:
           cd /tmp/CLIProxyAPI
           go build -o cli-proxy-api ./cmd/server
           sudo mv cli-proxy-api /usr/local/bin/
-          echo "CLIProxyAPI installed"
           echo "::endgroup::"
 
       - name: Install SAST Tools
@@ -151,36 +159,19 @@ jobs:
           set -euo pipefail
           echo "::group::Installing SAST Tools"
           pip install semgrep bandit trufflehog detect-secrets checkov safety pip-audit 2>/dev/null || true
-          git clone --depth 1 https://github.com/wireghoul/graudit.git /opt/graudit 2>/dev/null || true
-          [ -f /opt/graudit/graudit ] && sudo ln -sf /opt/graudit/graudit /usr/local/bin/graudit || true
-          curl -sfL https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh -s -- -b /usr/local/bin 2>/dev/null || true
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar xz -C /usr/local/bin gitleaks 2>/dev/null || true
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin 2>/dev/null || true
-          gem install brakeman --no-document 2>/dev/null || true
-          npm install -g snyk 2>/dev/null || true
-          echo "SAST tools installed"
           echo "::endgroup::"
 
       - name: Install DAST Tools
         run: |
           set -euo pipefail
           echo "::group::Installing DAST Tools"
-          sudo apt-get update -qq && sudo apt-get install -y -qq nmap nikto dnsutils whois netcat-openbsd jq curl wget unzip || true
+          sudo apt-get update -qq && sudo apt-get install -y -qq nmap nikto dnsutils whois jq curl wget unzip || true
           curl -sSfL https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/nuclei_3.2.9_linux_amd64.zip -o /tmp/nuclei.zip && unzip -q /tmp/nuclei.zip -d /usr/local/bin 2>/dev/null || true
           nuclei -update-templates 2>/dev/null || true
           curl -sSfL https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin ffuf 2>/dev/null || true
-          curl -sSfL https://github.com/projectdiscovery/httpx/releases/download/v1.6.3/httpx_1.6.3_linux_amd64.zip -o /tmp/httpx.zip && unzip -q /tmp/httpx.zip -d /usr/local/bin 2>/dev/null || true
-          curl -sSfL https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip -o /tmp/subfinder.zip && unzip -q /tmp/subfinder.zip -d /usr/local/bin 2>/dev/null || true
-          pip install sqlmap dirsearch arjun 2>/dev/null || true
-          curl -sSfL https://github.com/hahwul/dalfox/releases/download/v2.9.3/dalfox_2.9.3_linux_amd64.tar.gz | tar xz -C /usr/local/bin dalfox 2>/dev/null || true
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-          echo "DAST tools installed"
+          pip install sqlmap dirsearch 2>/dev/null || true
           echo "::endgroup::"
-
-      - name: Verify Tools
-        run: |
-          echo "=== SAST ===" && semgrep --version 2>/dev/null || true && bandit --version 2>/dev/null || true
-          echo "=== DAST ===" && nuclei -version 2>/dev/null || true && nmap --version 2>/dev/null | head -1
 
       - name: Configure CLIProxyAPI
         run: |
@@ -220,6 +211,100 @@ jobs:
           pip install -e ".[sandbox]" || pip install -e .
           strix --version || python -c "import strix; print('Strix installed')"
 
+      - name: Build Dashboard
+        id: dashboard_build
+        if: github.event.inputs.enable_dashboard == 'true'
+        run: |
+          echo "::group::Building Dashboard"
+          cd /tmp/strix-source/strix/dashboard/frontend
+          npm install 2>/dev/null || true
+          npm run build 2>/dev/null || true
+          if [ -d "dist" ]; then
+            echo "Dashboard built successfully"
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Dashboard build failed"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
+      - name: Start Dashboard Server
+        id: dashboard
+        if: github.event.inputs.enable_dashboard == 'true' && steps.dashboard_build.outputs.built == 'true'
+        env:
+          STRIX_DASHBOARD_STATE_FILE: /tmp/strix_dashboard_state.json
+        run: |
+          echo "::group::Starting Dashboard Server"
+          echo '{}' > /tmp/strix_dashboard_state.json
+          chmod 666 /tmp/strix_dashboard_state.json
+          cat > /tmp/start_dashboard.py << 'PYEOF'
+          import sys
+          sys.path.insert(0, '/tmp/strix-source')
+          from strix.dashboard import start_dashboard
+          import os
+          import json
+          config = {
+              "target": os.environ.get("SCAN_TARGET", "./"),
+              "timeframe": int(os.environ.get("SCAN_TIMEFRAME", "60")),
+              "scan_mode": os.environ.get("SCAN_MODE", "deep"),
+              "model": os.environ.get("SCAN_MODEL", "qwen3-coder-plus"),
+          }
+          server = start_dashboard(host="0.0.0.0", port=8080, scan_config=config)
+          print(f"Dashboard running at http://localhost:8080")
+          import time
+          while True:
+              time.sleep(60)
+          PYEOF
+          export SCAN_TARGET="${{ github.event.inputs.target || './' }}"
+          export SCAN_TIMEFRAME="${{ github.event.inputs.timeframe || '60' }}"
+          export SCAN_MODE="${{ github.event.inputs.scan_mode || 'deep' }}"
+          export SCAN_MODEL="${{ github.event.inputs.model || 'qwen3-coder-plus' }}"
+          nohup python /tmp/start_dashboard.py > /tmp/dashboard.log 2>&1 &
+          echo "$!" > /tmp/dashboard.pid
+          sleep 5
+          if kill -0 $(cat /tmp/dashboard.pid) 2>/dev/null; then
+            echo "Dashboard started"
+            echo "running=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Dashboard failed to start"
+            cat /tmp/dashboard.log || true
+            echo "running=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
+      - name: Start Cloudflare Tunnel
+        id: tunnel
+        if: github.event.inputs.enable_dashboard == 'true' && steps.dashboard.outputs.running == 'true'
+        run: |
+          echo "::group::Starting Cloudflare Tunnel"
+          curl -sSfL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+          chmod +x /usr/local/bin/cloudflared
+          nohup cloudflared tunnel --url http://localhost:${{ env.DASHBOARD_PORT }} > /tmp/tunnel.log 2>&1 &
+          echo "$!" > /tmp/tunnel.pid
+          sleep 10
+          DASHBOARD_URL=""
+          for i in {1..30}; do
+            DASHBOARD_URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/tunnel.log | head -1 || true)
+            if [ -n "$DASHBOARD_URL" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ -n "$DASHBOARD_URL" ]; then
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║  🌐 LIVE DASHBOARD URL                                       ║"
+            echo "║  $DASHBOARD_URL"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+            echo "::notice title=Dashboard Available::$DASHBOARD_URL"
+            echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not establish tunnel"
+            echo "url=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
       - name: Run Strix Security Scan
         id: strix
         timeout-minutes: ${{ fromJSON(github.event.inputs.timeframe || env.DEFAULT_TIMEFRAME) }}
@@ -233,6 +318,7 @@ jobs:
           STRIX_LLM: ${{ github.event.inputs.model || 'qwen3-coder-plus' }}
           STRIX_SCAN_DURATION_MINUTES: ${{ github.event.inputs.timeframe || '60' }}
           STRIX_USE_HOST_NETWORK: 'true'
+          STRIX_DASHBOARD_STATE_FILE: /tmp/strix_dashboard_state.json
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
         run: |
           set +e
@@ -255,6 +341,12 @@ jobs:
           echo "vulnerabilities_found=$VULN_COUNT" >> "$GITHUB_OUTPUT"
           echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Stop Dashboard and Tunnel
+        if: always()
+        run: |
+          [ -f /tmp/tunnel.pid ] && kill $(cat /tmp/tunnel.pid) 2>/dev/null || true
+          [ -f /tmp/dashboard.pid ] && kill $(cat /tmp/dashboard.pid) 2>/dev/null || true
 
       - name: Stop CLIProxyAPI Server
         if: always()
@@ -299,7 +391,6 @@ jobs:
           cd tokens_backup && tar -czf ../qwen-tokens-new.tar.gz . && cd ..
           echo "$ENCRYPTION_KEY" | openssl enc -aes-256-cbc -salt -pbkdf2 -in qwen-tokens-new.tar.gz -out qwen-tokens-new.enc -pass stdin
           NEW_SECRET_VALUE=$(base64 -w 0 qwen-tokens-new.enc)
-          echo "Encrypted (${#NEW_SECRET_VALUE} bytes)"
           KEY_RESPONSE=$(curl -s -H "Authorization: Bearer $SERVER_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GH_REPO/actions/secrets/public-key")
           PUBLIC_KEY=$(echo "$KEY_RESPONSE" | jq -r '.key')
           KEY_ID=$(echo "$KEY_RESPONSE" | jq -r '.key_id')
@@ -308,15 +399,6 @@ jobs:
             exit 1
           fi
           pip install pynacl -q
-          python3 -c "
-          import base64, sys, os
-          from nacl import encoding, public
-          pk = base64.b64decode(os.environ['PUBLIC_KEY'])
-          sv = open('secret_value.txt').read()
-          box = public.SealedBox(public.PublicKey(pk))
-          enc = box.encrypt(sv.encode('utf-8'))
-          print(base64.b64encode(enc).decode('utf-8'))
-          " > encrypted_value.txt <<< "$NEW_SECRET_VALUE"
           echo "$NEW_SECRET_VALUE" > secret_value.txt
           export PUBLIC_KEY
           ENCRYPTED_VALUE=$(python3 -c "
@@ -329,11 +411,11 @@ jobs:
           print(base64.b64encode(enc).decode('utf-8'))
           ")
           curl -s -X PUT -H "Authorization: Bearer $SERVER_TOKEN" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" "https://api.github.com/repos/$GH_REPO/actions/secrets/QWEN_TOKENS" -d "{\"encrypted_value\":\"$ENCRYPTED_VALUE\",\"key_id\":\"$KEY_ID\"}"
-          echo "QWEN_TOKENS secret updated!"
+          echo "QWEN_TOKENS updated!"
           rm -rf tokens_backup qwen-tokens-new.tar.gz qwen-tokens-new.enc secret_value.txt
           echo "::endgroup::"
 
-      - name: Cleanup Token Files
+      - name: Cleanup
         if: always()
         run: |
           rm -rf "$HOME/.cli-proxy-api"/qwen-*.json "$HOME/.cli-proxy-api/cliproxy.pid" 2>/dev/null || true
@@ -347,26 +429,27 @@ jobs:
             strix_runs/
             strix_output.log
             ~/.cli-proxy-api/cliproxy.log
+            /tmp/dashboard.log
           retention-days: 30
 
       - name: Create Security Summary
         if: always()
         run: |
           REENCRYPT="${{ github.event.inputs.reencrypt_tokens || 'true' }}"
+          DASHBOARD_URL="${{ steps.tunnel.outputs.url }}"
           echo "# Strix Security Scan" > "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DASHBOARD_URL" ]; then
+            echo "## 🌐 Live Dashboard" >> "$GITHUB_STEP_SUMMARY"
+            echo "**[$DASHBOARD_URL]($DASHBOARD_URL)**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "## Configuration" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Target**: \`${{ github.event.inputs.target || './' }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Mode**: ${{ github.event.inputs.scan_mode || 'deep' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Model**: ${{ github.event.inputs.model || 'qwen3-coder-plus' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Duration**: ${{ github.event.inputs.timeframe || '60' }} minutes" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Token Re-encryption**: $REENCRYPT" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$REENCRYPT" = "true" ]; then
-            echo "Tokens re-encrypted automatically. No need to run Qwen.yml." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Token re-encryption disabled. Run Qwen.yml to refresh." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "- **Dashboard**: ${{ github.event.inputs.enable_dashboard || 'true' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "---" >> "$GITHUB_STEP_SUMMARY"
           echo "*Strix AI Scanner (89pl/Strixer)*" >> "$GITHUB_STEP_SUMMARY"

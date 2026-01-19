@@ -12,8 +12,9 @@ class Config:
     strix_llm = None
     llm_api_key = None
     llm_api_base = None
+    openai_api_key = None
     openai_api_base = None
-    litellm_base_url = None
+    cliproxy_endpoint = None
     ollama_api_base = None
     strix_reasoning_effort = "high"
     strix_llm_max_retries = "5"
@@ -23,8 +24,9 @@ class Config:
         "strix_llm",
         "llm_api_key",
         "llm_api_base",
+        "openai_api_key",
         "openai_api_base",
-        "litellm_base_url",
+        "cliproxy_endpoint",
         "ollama_api_base",
         "strix_reasoning_effort",
         "strix_llm_max_retries",

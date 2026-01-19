@@ -78,7 +78,7 @@ class DockerRuntime(AbstractRuntime):
         if port_bindings.get(port_key):
             self._tool_server_port = int(port_bindings[port_key][0]["HostPort"])
 
-    def _wait_for_tool_server(self, max_retries: int = 30, timeout: int = 5) -> None:
+    def _wait_for_tool_server(self, max_retries: int = 60, timeout: int = 10) -> None:
         host = self._resolve_docker_host()
         health_url = f"http://{host}:{self._tool_server_port}/health"
 

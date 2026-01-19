@@ -519,6 +519,8 @@ jobs:
           STRIX_DASHBOARD_STATE_FILE: /tmp/strix_dashboard_state.json
           STRIX_SCAN_DURATION_MINUTES: ${{ github.event.inputs.timeframe || '60' }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          # Use custom image from this repository
+          STRIX_IMAGE: ghcr.io/${{ github.repository_owner }}/strix-sandbox:latest
         run: |
           set +e
           echo "::group::Running Strix Security Scan (Direct CLIProxyAPI)"
@@ -534,6 +536,15 @@ jobs:
             FULL_INSTRUCTIONS="${USER_PROMPT}. ${EXTRA_INSTRUCTIONS}"
           else
             FULL_INSTRUCTIONS="${EXTRA_INSTRUCTIONS}"
+          fi
+          
+          # Print Dashboard URL prominently
+          DASHBOARD_URL="${{ steps.tunnel.outputs.url }}"
+          if [ -n "$DASHBOARD_URL" ]; then
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║  🌐 LIVE DASHBOARD URL                                       ║"
+            echo "║  $DASHBOARD_URL"
+            echo "╚══════════════════════════════════════════════════════════════╝"
           fi
           
           echo "╔══════════════════════════════════════════════════════════════╗"

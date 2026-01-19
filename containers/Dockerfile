@@ -153,6 +153,7 @@ ENV STRIX_SANDBOX_MODE=true
 ENV PYTHONPATH=/app
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 
 RUN mkdir -p /workspace && chown -R pentester:pentester /workspace /app
 

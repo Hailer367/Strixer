@@ -1,10 +1,10 @@
-"""LLM module for Strix."""
+"""LLM module for Strix - Direct HTTP-based LLM client."""
 
-# Original LLM classes (litellm-based)
+# Core LLM classes (HTTP-based, no LiteLLM)
 from strix.llm.config import LLMConfig
 from strix.llm.llm import LLM, LLMRequestFailedError, LLMResponse, RequestStats
 
-# HTTP-based LLM client (for direct CLIProxyAPI usage)
+# Direct HTTP client for simple usage
 from strix.llm.http_client import (
     LLMClient,
     chat,

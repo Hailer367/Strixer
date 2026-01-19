@@ -46,7 +46,6 @@ strix = "strix.interface.main:main"
 [tool.poetry.dependencies]
 python = "^3.12"
 # Core CLI dependencies
-litellm = { version = "~1.80.7", extras = ["proxy"] }
 tenacity = "^9.0.0"
 pydantic = {extras = ["email"], version = "^2.11.3"}
 rich = "*"
@@ -55,6 +54,8 @@ textual = "^4.0.0"
 xmltodict = "^0.13.0"
 requests = "^2.32.0"
 cvss = "^3.2"
+aiohttp = "^3.9.0"
+tiktoken = "^0.7.0"
 
 # Optional LLM provider dependencies
 google-cloud-aiplatform = { version = ">=1.38", optional = true }
@@ -129,7 +130,6 @@ pretty = true
 # Allow some flexibility for third-party libraries
 [[tool.mypy.overrides]]
 module = [
-    "litellm.*",
     "tenacity.*",
     "numpydoc.*",
     "rich.*",
@@ -147,6 +147,8 @@ module = [
     "libtmux.*",
     "pytest.*",
     "cvss.*",
+    "tiktoken.*",
+    "aiohttp.*",
 ]
 ignore_missing_imports = true
 
@@ -329,7 +331,7 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 known_first_party = ["strix"]
-known_third_party = ["fastapi", "pydantic", "litellm", "tenacity"]
+known_third_party = ["fastapi", "pydantic", "tiktoken", "tenacity", "aiohttp"]
 
 # ============================================================================
 # Pytest Configuration

@@ -1,9 +1,12 @@
+"""Memory compressor for conversation history management."""
+
 import logging
 from typing import Any
 
-import litellm
+import tiktoken
 
 from strix.config import Config
+from strix.llm.http_client import get_llm_client
 
 
 logger = logging.getLogger(__name__)
@@ -43,10 +46,20 @@ Provide a technically precise summary that preserves all operational security co
 keeping the summary concise and to the point."""
 
 
-def _count_tokens(text: str, model: str) -> int:
+def _get_encoding(model: str) -> tiktoken.Encoding:
+    """Get tiktoken encoding for a model."""
     try:
-        count = litellm.token_counter(model=model, text=text)
-        return int(count)
+        return tiktoken.encoding_for_model(model)
+    except KeyError:
+        # Default to cl100k_base for unknown models (GPT-4/ChatGPT default)
+        return tiktoken.get_encoding("cl100k_base")
+
+
+def _count_tokens(text: str, model: str) -> int:
+    """Count tokens in text using tiktoken."""
+    try:
+        enc = _get_encoding(model)
+        return len(enc.encode(text))
     except Exception:
         logger.exception("Failed to count tokens")
         return len(text) // 4  # Rough estimate
@@ -105,14 +118,17 @@ def _summarize_messages(
     prompt = SUMMARY_PROMPT_TEMPLATE.format(conversation=conversation)
 
     try:
-        completion_args = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "timeout": timeout,
-        }
+        client = get_llm_client()
+        # Clean model name if it has provider prefix
+        clean_model = model.split("/", 1)[1] if "/" in model else model
 
-        response = litellm.completion(**completion_args)
-        summary = response.choices[0].message.content or ""
+        response = client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            model=clean_model,
+            timeout=timeout,
+        )
+
+        summary = response["choices"][0]["message"]["content"] or ""
         if not summary.strip():
             return messages[0]
         summary_msg = "<context_summary message_count='{count}'>{text}</context_summary>"

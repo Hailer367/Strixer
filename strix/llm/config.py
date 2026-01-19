@@ -1,3 +1,5 @@
+"""LLM configuration for Strix."""
+
 from strix.config import Config
 
 
@@ -14,10 +16,6 @@ class LLMConfig:
 
         if not self.model_name:
             raise ValueError("STRIX_LLM environment variable must be set and not empty")
-
-        # Auto-add openai/ prefix for Qwen models if missing (required for LiteLLM with custom endpoints)
-        if self.model_name and "qwen" in self.model_name.lower() and "/" not in self.model_name:
-            self.model_name = f"openai/{self.model_name}"
 
         self.enable_prompt_caching = enable_prompt_caching
         self.skills = skills or []

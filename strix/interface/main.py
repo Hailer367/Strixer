@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import litellm
+from strix.llm.http_client import get_llm_client
 from docker.errors import DockerException
 from rich.console import Console
 from rich.panel import Panel
@@ -57,7 +57,7 @@ def validate_environment() -> None:  # noqa: PLR0912, PLR0915
         [
             Config.get("llm_api_base"),
             Config.get("openai_api_base"),
-            Config.get("litellm_base_url"),
+            Config.get("cliproxy_endpoint"),
             Config.get("ollama_api_base"),
         ]
     )
@@ -96,7 +96,7 @@ def validate_environment() -> None:  # noqa: PLR0912, PLR0915
                 error_text.append("• ", style="white")
                 error_text.append("STRIX_LLM", style="bold cyan")
                 error_text.append(
-                    " - Model name to use with litellm (e.g., 'openai/gpt-5')\n",
+                    " - Model name for LLM API (e.g., 'qwen3-coder-plus')\n",
                     style="white",
                 )
 
@@ -207,7 +207,7 @@ async def warm_up_llm() -> None:
         api_base = (
             Config.get("llm_api_base")
             or Config.get("openai_api_base")
-            or Config.get("litellm_base_url")
+            or Config.get("cliproxy_endpoint")
             or Config.get("ollama_api_base")
         )
 
@@ -218,19 +218,21 @@ async def warm_up_llm() -> None:
 
         llm_timeout = int(Config.get("llm_timeout") or "300")
 
-        completion_kwargs: dict[str, Any] = {
-            "model": model_name,
-            "messages": test_messages,
-            "timeout": llm_timeout,
-        }
-        if api_key:
-            completion_kwargs["api_key"] = api_key
-        if api_base:
-            completion_kwargs["api_base"] = api_base
+        # Use direct HTTP client
+        client = get_llm_client()
+        
+        # Clean model name (remove provider prefix)
+        clean_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
+        
+        response = client.chat_completion(
+            messages=test_messages,
+            model=clean_model,
+            timeout=llm_timeout,
+        )
 
-        response = litellm.completion(**completion_kwargs)
-
-        validate_llm_response(response)
+        # Validate response has expected structure
+        if not response.get("choices") or not response["choices"][0].get("message"):
+            raise ValueError("Invalid response from LLM API")
 
     except Exception as e:  # noqa: BLE001
         error_text = Text()

@@ -1,12 +1,22 @@
+"""
+LLM module for Strix - Direct HTTP-based LLM client.
+
+This module provides an async LLM client using direct HTTP requests
+to OpenAI-compatible APIs, replacing LiteLLM for simplicity.
+"""
+
+from __future__ import annotations
+
 import asyncio
+import json
+import logging
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
-import litellm
+import aiohttp
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from litellm import acompletion, completion_cost, stream_chunk_builder, supports_reasoning
-from litellm.utils import supports_prompt_caching, supports_vision
 
 from strix.config import Config
 from strix.llm.config import LLMConfig
@@ -21,8 +31,7 @@ from strix.tools import get_tools_prompt
 from strix.utils.resource_paths import get_strix_resource_path
 
 
-litellm.drop_params = True
-litellm.modify_params = True
+logger = logging.getLogger(__name__)
 
 
 class LLMRequestFailedError(Exception):
@@ -58,6 +67,8 @@ class RequestStats:
 
 
 class LLM:
+    """Direct HTTP-based LLM client for OpenAI-compatible APIs."""
+
     def __init__(self, config: LLMConfig, agent_name: str | None = None):
         self.config = config
         self.agent_name = agent_name
@@ -65,6 +76,29 @@ class LLM:
         self._total_stats = RequestStats()
         self.memory_compressor = MemoryCompressor(model_name=config.model_name)
         self.system_prompt = self._load_system_prompt(agent_name)
+
+        # API configuration
+        self.api_base = (
+            Config.get("cliproxy_endpoint")
+            or Config.get("llm_api_base")
+            or Config.get("openai_api_base")
+            or "http://127.0.0.1:8317/v1"
+        )
+        self.api_key = Config.get("llm_api_key") or Config.get("openai_api_key") or "sk-dummy"
+
+        # Clean model name (remove provider prefix like "openai/")
+        self.model_name = config.model_name
+        if "/" in self.model_name:
+            self.model_name = self.model_name.split("/", 1)[1]
+
+        # Ensure base URL format
+        self.api_base = self.api_base.rstrip("/")
+        if not self.api_base.endswith("/v1"):
+            self.api_base = f"{self.api_base}/v1"
+
+        # Retry configuration
+        self.max_retries = int(Config.get("strix_llm_max_retries") or "5")
+        self.retry_delay = 1.0
 
         reasoning = Config.get("strix_reasoning_effort")
         if reasoning:
@@ -112,47 +146,84 @@ class LLM:
         self, conversation_history: list[dict[str, Any]]
     ) -> AsyncIterator[LLMResponse]:
         messages = self._prepare_messages(conversation_history)
-        max_retries = int(Config.get("strix_llm_max_retries") or "5")
 
-        for attempt in range(max_retries + 1):
+        for attempt in range(self.max_retries + 1):
             try:
                 async for response in self._stream(messages):
                     yield response
                 return  # noqa: TRY300
             except Exception as e:  # noqa: BLE001
-                if attempt >= max_retries or not self._should_retry(e):
+                if attempt >= self.max_retries or not self._should_retry(e):
                     self._raise_error(e)
                 wait = min(10, 2 * (2**attempt))
+                logger.warning(f"LLM request failed (attempt {attempt + 1}), retrying in {wait}s: {e}")
                 await asyncio.sleep(wait)
 
     async def _stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[LLMResponse]:
         accumulated = ""
-        chunks: list[Any] = []
-
         self._total_stats.requests += 1
-        response = await acompletion(**self._build_completion_args(messages), stream=True)
 
-        async for chunk in response:
-            chunks.append(chunk)
-            delta = self._get_chunk_content(chunk)
-            if delta:
-                accumulated += delta
-                if "</function>" in accumulated:
-                    accumulated = accumulated[
-                        : accumulated.find("</function>") + len("</function>")
-                    ]
-                    yield LLMResponse(content=accumulated)
-                    break
-                yield LLMResponse(content=accumulated)
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": True,
+            "timeout": self.config.timeout,
+        }
 
-        if chunks:
-            self._update_usage_stats(stream_chunk_builder(chunks))
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+
+        url = f"{self.api_base}/chat/completions"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout),
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise LLMRequestFailedError(
+                        f"API request failed with status {response.status}",
+                        error_text
+                    )
+
+                async for line in response.content:
+                    if line:
+                        line_str = line.decode("utf-8").strip()
+                        if line_str.startswith("data: "):
+                            data = line_str[6:]
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                if choices := chunk.get("choices"):
+                                    if delta := choices[0].get("delta"):
+                                        if content := delta.get("content"):
+                                            accumulated += content
+                                            if "</function>" in accumulated:
+                                                accumulated = accumulated[
+                                                    : accumulated.find("</function>") + len("</function>")
+                                                ]
+                                                yield LLMResponse(content=accumulated)
+                                                break
+                                            yield LLMResponse(content=accumulated)
+
+                                # Track usage if available
+                                if usage := chunk.get("usage"):
+                                    self._total_stats.input_tokens += usage.get("prompt_tokens", 0)
+                                    self._total_stats.output_tokens += usage.get("completion_tokens", 0)
+                            except json.JSONDecodeError:
+                                continue
 
         accumulated = fix_incomplete_tool_call(_truncate_to_first_function(accumulated))
         yield LLMResponse(
             content=accumulated,
             tool_invocations=parse_tool_invocations(accumulated),
-            thinking_blocks=self._extract_thinking(chunks),
+            thinking_blocks=None,
         )
 
     def _prepare_messages(self, conversation_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -177,111 +248,27 @@ class LLM:
         conversation_history.extend(compressed)
         messages.extend(compressed)
 
-        if self._is_anthropic() and self.config.enable_prompt_caching:
-            messages = self._add_cache_control(messages)
+        # Strip images if model doesn't support vision
+        messages = self._strip_images(messages)
 
         return messages
 
-    def _build_completion_args(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        if not self._supports_vision():
-            messages = self._strip_images(messages)
-
-        args: dict[str, Any] = {
-            "model": self.config.model_name,
-            "messages": messages,
-            "timeout": self.config.timeout,
-            "stream_options": {"include_usage": True},
-        }
-
-        if api_key := Config.get("llm_api_key"):
-            args["api_key"] = api_key
-        if api_base := (
-            Config.get("llm_api_base")
-            or Config.get("openai_api_base")
-            or Config.get("litellm_base_url")
-            or Config.get("ollama_api_base")
-        ):
-            args["api_base"] = api_base
-        if self._supports_reasoning():
-            args["reasoning_effort"] = self._reasoning_effort
-
-        return args
-
-    def _get_chunk_content(self, chunk: Any) -> str:
-        if chunk.choices and hasattr(chunk.choices[0], "delta"):
-            return getattr(chunk.choices[0].delta, "content", "") or ""
-        return ""
-
-    def _extract_thinking(self, chunks: list[Any]) -> list[dict[str, Any]] | None:
-        if not chunks or not self._supports_reasoning():
-            return None
-        try:
-            resp = stream_chunk_builder(chunks)
-            if resp.choices and hasattr(resp.choices[0].message, "thinking_blocks"):
-                blocks: list[dict[str, Any]] = resp.choices[0].message.thinking_blocks
-                return blocks
-        except Exception:  # noqa: BLE001, S110  # nosec B110
-            pass
-        return None
-
-    def _update_usage_stats(self, response: Any) -> None:
-        try:
-            if hasattr(response, "usage") and response.usage:
-                input_tokens = getattr(response.usage, "prompt_tokens", 0)
-                output_tokens = getattr(response.usage, "completion_tokens", 0)
-
-                cached_tokens = 0
-                if hasattr(response.usage, "prompt_tokens_details"):
-                    prompt_details = response.usage.prompt_tokens_details
-                    if hasattr(prompt_details, "cached_tokens"):
-                        cached_tokens = prompt_details.cached_tokens or 0
-
-            else:
-                input_tokens = 0
-                output_tokens = 0
-                cached_tokens = 0
-
-            try:
-                cost = completion_cost(response) or 0.0
-            except Exception:  # noqa: BLE001
-                cost = 0.0
-
-            self._total_stats.input_tokens += input_tokens
-            self._total_stats.output_tokens += output_tokens
-            self._total_stats.cached_tokens += cached_tokens
-            self._total_stats.cost += cost
-
-        except Exception:  # noqa: BLE001, S110  # nosec B110
-            pass
-
     def _should_retry(self, e: Exception) -> bool:
-        code = getattr(e, "status_code", None) or getattr(
-            getattr(e, "response", None), "status_code", None
-        )
-        return code is None or litellm._should_retry(code)
+        # Retry on connection errors, timeouts, and 5xx errors
+        if isinstance(e, (aiohttp.ClientError, asyncio.TimeoutError)):
+            return True
+        if isinstance(e, LLMRequestFailedError):
+            # Check if it's a server error (5xx) or rate limit (429)
+            if e.details and ("500" in str(e.details) or "502" in str(e.details) or
+                             "503" in str(e.details) or "429" in str(e.details)):
+                return True
+        return False
 
     def _raise_error(self, e: Exception) -> None:
         from strix.telemetry import posthog
 
         posthog.error("llm_error", type(e).__name__)
         raise LLMRequestFailedError(f"LLM request failed: {type(e).__name__}", str(e)) from e
-
-    def _is_anthropic(self) -> bool:
-        if not self.config.model_name:
-            return False
-        return any(p in self.config.model_name.lower() for p in ["anthropic/", "claude"])
-
-    def _supports_vision(self) -> bool:
-        try:
-            return bool(supports_vision(model=self.config.model_name))
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _supports_reasoning(self) -> bool:
-        try:
-            return bool(supports_reasoning(model=self.config.model_name))
-        except Exception:  # noqa: BLE001
-            return False
 
     def _strip_images(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         result = []
@@ -297,22 +284,4 @@ class LLM:
                 result.append({**msg, "content": "\n".join(text_parts)})
             else:
                 result.append(msg)
-        return result
-
-    def _add_cache_control(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not messages or not supports_prompt_caching(self.config.model_name):
-            return messages
-
-        result = list(messages)
-
-        if result[0].get("role") == "system":
-            content = result[0]["content"]
-            result[0] = {
-                **result[0],
-                "content": [
-                    {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
-                ]
-                if isinstance(content, str)
-                else content,
-            }
         return result

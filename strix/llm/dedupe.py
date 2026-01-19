@@ -1,11 +1,12 @@
+"""Vulnerability deduplication using LLM."""
+
 import json
 import logging
 import re
 from typing import Any
 
-import litellm
-
 from strix.config import Config
+from strix.llm.http_client import get_llm_client
 
 
 logger = logging.getLogger(__name__)
@@ -155,14 +156,10 @@ def check_duplicate(
 
         comparison_data = {"candidate": candidate_cleaned, "existing_reports": existing_cleaned}
 
-        model_name = Config.get("strix_llm")
-        api_key = Config.get("llm_api_key")
-        api_base = (
-            Config.get("llm_api_base")
-            or Config.get("openai_api_base")
-            or Config.get("litellm_base_url")
-            or Config.get("ollama_api_base")
-        )
+        # Get model name and clean it
+        model_name = Config.get("strix_llm") or "qwen3-coder-plus"
+        if "/" in model_name:
+            model_name = model_name.split("/", 1)[1]
 
         messages = [
             {"role": "system", "content": DEDUPE_SYSTEM_PROMPT},
@@ -176,19 +173,14 @@ def check_duplicate(
             },
         ]
 
-        completion_kwargs: dict[str, Any] = {
-            "model": model_name,
-            "messages": messages,
-            "timeout": 120,
-        }
-        if api_key:
-            completion_kwargs["api_key"] = api_key
-        if api_base:
-            completion_kwargs["api_base"] = api_base
+        client = get_llm_client()
+        response = client.chat_completion(
+            messages=messages,
+            model=model_name,
+            timeout=120,
+        )
 
-        response = litellm.completion(**completion_kwargs)
-
-        content = response.choices[0].message.content
+        content = response["choices"][0]["message"]["content"]
         if not content:
             return {
                 "is_duplicate": False,

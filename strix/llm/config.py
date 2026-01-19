@@ -74,6 +74,7 @@ class LLMConfig:
         prompt_modules: list[str] | None = None,
         timeout: int | None = None,
         scan_mode: str = "deep",
+        skills: list[str] | None = None,
         # Legacy CLIProxyAPI parameters (now read from config.json)
         cliproxy_enabled: bool | None = None,
         cliproxy_base_url: str | None = None,
@@ -113,6 +114,7 @@ class LLMConfig:
         self.enable_prompt_caching = enable_prompt_caching
         self.prompt_modules = prompt_modules or []
         self.timeout = timeout or int(os.getenv("LLM_TIMEOUT", str(DEFAULT_TIMEOUT)))
+        self.skills = skills or []
         
         # Store timeframe config for later access
         self._strix_config = strix_config
@@ -186,6 +188,7 @@ class LLMConfig:
             "timeout": self.timeout,
             "scan_mode": self.scan_mode,
             "api_endpoint": self.api_endpoint,
+            "skills": self.skills,
         }
         
         if self._strix_config:

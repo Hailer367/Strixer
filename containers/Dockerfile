@@ -156,7 +156,7 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 RUN mkdir -p /workspace && chown -R pentester:pentester /workspace /app
 
-COPY pyproject.toml poetry.lock ./
+COPY --chown=pentester:pentester pyproject.toml poetry.lock ./
 
 USER pentester
 RUN poetry lock && poetry install --no-root --without dev --extras sandbox

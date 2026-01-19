@@ -170,10 +170,12 @@ class LLM:
             "timeout": self.config.timeout,
         }
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
+        headers = {"Content-Type": "application/json"}
+        
+        # Only add Authorization header if API key is real (not dummy)
+        # CLIProxyAPI doesn't require auth, so skip for local/dummy keys
+        if self.api_key and not self.api_key.startswith("sk-dummy"):
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         url = f"{self.api_base}/chat/completions"
 

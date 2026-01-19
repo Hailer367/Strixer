@@ -65,10 +65,14 @@ class LLMClient:
 
     def _get_headers(self) -> dict[str, str]:
         """Get request headers."""
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
+        headers = {"Content-Type": "application/json"}
+        
+        # Only add Authorization header if API key is real (not dummy)
+        # CLIProxyAPI doesn't require auth, so skip for local/dummy keys
+        if self.api_key and not self.api_key.startswith("sk-dummy"):
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        
+        return headers
 
     def _make_request(
         self,

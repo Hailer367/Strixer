@@ -1,11 +1,7 @@
 name: Build & Push Sandbox Container
 
 on:
-  push:
-    paths:
-      - 'containers/**'
-      - '.github/workflows/build-container.yml'
-  workflow_dispatch:
+  workflow_dispatch: # Manual trigger only
 
 env:
   REGISTRY: ghcr.io

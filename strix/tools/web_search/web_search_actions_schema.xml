@@ -19,6 +19,9 @@ The tool provides intelligent, contextual responses with current information tha
       <parameter name="query" type="string" required="true">
         <description>The search query or question you want to research. Be specific and include relevant technical terms, version numbers, or context for better results. Make it as detailed as possible, with the context of the current security assessment.</description>
       </parameter>
+      <parameter name="method" type="string" required="false">
+        <description>The search method to use. Options: 'auto' (default, tries Perplexity then DDG then Browser), 'ddg' (direct DuckDuckGo scraping), 'browser' (Playwright-based search), 'perplexity' (requires API key). Use 'auto' if unsure.</description>
+      </parameter>
     </parameters>
     <returns type="Dict[str, Any]">
       <description>Response containing: - success: Whether the search was successful - query: The original search query - content: AI-generated response with current information - message: Status message</description>

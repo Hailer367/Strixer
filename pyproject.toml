@@ -57,6 +57,7 @@ cvss = "^3.2"
 aiohttp = "^3.9.0"
 tiktoken = "^0.7.0"
 httpx = "^0.27.0"
+duckduckgo-search = "^7.0.0"
 
 # Optional LLM provider dependencies
 google-cloud-aiplatform = { version = ">=1.38", optional = true }

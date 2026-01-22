@@ -32,49 +32,82 @@ security implications and details."""
 
 
 @register_tool(sandbox_execution=False)
-def web_search(query: str) -> dict[str, Any]:
-    try:
+def web_search(query: str, method: str = "auto") -> dict[str, Any]:
+    """
+    Advanced web search with multiple methods and automatic fallback.
+    Methods: auto, perplexity, ddg, browser
+    """
+    from strix.tools.web_search.ddg_search import perform_ddg_search
+    from strix.tools.web_search.browser_search import perform_browser_search
+
+    results_data = []
+    content = ""
+    used_method = method
+
+    # 1. Try Perplexity if requested or auto
+    if method in ("auto", "perplexity"):
         api_key = os.getenv("PERPLEXITY_API_KEY")
-        if not api_key:
-            return {
-                "success": False,
-                "message": "PERPLEXITY_API_KEY environment variable not set",
-                "results": [],
-            }
+        if api_key:
+            try:
+                url = "https://api.perplexity.ai/chat/completions"
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": "sonar-reasoning",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": query},
+                    ],
+                }
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+                return {
+                    "success": True,
+                    "query": query,
+                    "content": content,
+                    "method": "perplexity",
+                    "message": "Search completed via Perplexity.",
+                }
+            except Exception as e:
+                print(f"Perplexity failed: {e}")
+                if method == "perplexity":
+                    return {"success": False, "message": f"Perplexity failed: {e}", "results": []}
 
-        url = "https://api.perplexity.ai/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # 2. Try DuckDuckGo if requested or fallback from perplexity
+    if method in ("auto", "ddg") or (method == "auto" and not content):
+        try:
+            ddg_results = perform_ddg_search(query)
+            if ddg_results:
+                used_method = "ddg"
+                # Formulate a prompt-like content for consistency
+                formatted_results = "\n\n".join([f"### {r['title']}\nURL: {r['url']}\n{r['snippet']}" for r in ddg_results])
+                return {
+                    "success": True,
+                    "query": query,
+                    "results": ddg_results,
+                    "content": formatted_results,
+                    "method": "ddg",
+                    "message": "Search completed via DuckDuckGo.",
+                }
+        except Exception as e:
+            print(f"DuckDuckGo failed: {e}")
+            if method == "ddg":
+                return {"success": False, "message": f"DuckDuckGo failed: {e}", "results": []}
 
-        payload = {
-            "model": "sonar-reasoning",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": query},
-            ],
-        }
+    # 3. Last Resort: Browser Search
+    if method in ("auto", "browser") or (method == "auto" and not content):
+        try:
+            browser_res = perform_browser_search(query)
+            if browser_res["success"]:
+                return {
+                    "success": True,
+                    "query": query,
+                    "results": browser_res["results"],
+                    "content": "\n\n".join([f"### {r['title']}\nURL: {r['url']}\n{r['snippet']}" for r in browser_res["results"]]),
+                    "method": "browser",
+                    "message": "Search completed via Headless Browser.",
+                }
+        except Exception as e:
+            return {"success": False, "message": f"All search methods failed. Last error: {e}", "results": []}
 
-        response = requests.post(url, headers=headers, json=payload, timeout=300)
-        response.raise_for_status()
-
-        response_data = response.json()
-        content = response_data["choices"][0]["message"]["content"]
-
-    except requests.exceptions.Timeout:
-        return {"success": False, "message": "Request timed out", "results": []}
-    except requests.exceptions.RequestException as e:
-        return {"success": False, "message": f"API request failed: {e!s}", "results": []}
-    except KeyError as e:
-        return {
-            "success": False,
-            "message": f"Unexpected API response format: missing {e!s}",
-            "results": [],
-        }
-    except Exception as e:  # noqa: BLE001
-        return {"success": False, "message": f"Web search failed: {e!s}", "results": []}
-    else:
-        return {
-            "success": True,
-            "query": query,
-            "content": content,
-            "message": "Web search completed successfully",
-        }
+    return {"success": False, "message": "Search failed or no results found.", "results": []}

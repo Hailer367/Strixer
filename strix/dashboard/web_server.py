@@ -63,6 +63,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_json([t.__dict__ for t in get_state().tool_executions])
         elif path == "/api/stats":
             self._send_json(get_state().stats.__dict__)
+        elif path == "/api/agent-tree":
+            self._send_json(get_state().get_agent_tree() or {})
         elif path == "/api/feed":
             self._send_json(get_state().live_feed)
         elif path == "/health":

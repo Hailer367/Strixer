@@ -58,6 +58,8 @@ export interface TimeInfo {
 export interface AgentInfo {
   id: string;
   name: string;
+  type: string;
+  parent_id: string | null;
   status: string;
   current_task: string;
   tool_count: number;

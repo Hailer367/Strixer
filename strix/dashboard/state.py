@@ -49,6 +49,8 @@ class AgentInfo:
     """Agent status information."""
     id: str = ""
     name: str = ""
+    type: str = "scanner"  # orchestrator, scanner, fuzzer, etc.
+    parent_id: str | None = None
     status: str = "idle"
     current_task: str = ""
     tool_count: int = 0
@@ -106,6 +108,25 @@ class DashboardState:
         data = asdict(self)
         data["last_updated"] = datetime.now(timezone.utc).isoformat()
         return data
+
+    def get_agent_tree(self) -> dict[str, Any] | None:
+        """Generate a hierarchical tree from flat agents list."""
+        if not self.agents:
+            return None
+            
+        agents_by_id = {a.id: {**asdict(a), "children": []} for a in self.agents}
+        root = None
+        
+        for agent_id, agent_data in agents_by_id.items():
+            parent_id = agent_data.get("parent_id")
+            if parent_id and parent_id in agents_by_id:
+                agents_by_id[parent_id]["children"].append(agent_data)
+            else:
+                # If no parent or parent not found, it's a root (usually orchestrator)
+                if not root or agent_data.get("type") == "orchestrator":
+                    root = agent_data
+                    
+        return root
     
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DashboardState":

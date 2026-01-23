@@ -389,6 +389,9 @@ class BaseAgent(metaclass=AgentMeta):
             if pacing_delay > 5: # Only delay if it's significant
                 logger.debug(f"Pacing scan: Sleeping for {pacing_delay:.2f}s")
                 await asyncio.sleep(pacing_delay)
+        
+        # Update dashboard time tracking
+        self._sync_time_to_dashboard()
 
         final_response = None
 
@@ -645,3 +648,48 @@ class BaseAgent(metaclass=AgentMeta):
             except RuntimeError:
                 self._current_task.cancel()
         self._current_task = None
+    
+    def _sync_time_to_dashboard(self) -> None:
+        """Sync time tracking info to dashboard state."""
+        import os
+        if not os.getenv("STRIX_DASHBOARD_STATE_FILE"):
+            return
+        
+        try:
+            from strix.dashboard.state import update_state
+            
+            elapsed_pct = self.time_keeper.get_elapsed_percentage() * 100
+            remaining_mins = self.time_keeper.get_remaining_minutes()
+            duration_mins = self.time_keeper.duration_seconds / 60
+            elapsed_mins = (duration_mins - remaining_mins)
+            
+            # Determine phase
+            if remaining_mins <= 5:
+                phase = "critical"
+                is_critical = True
+                is_warning = True
+            elif remaining_mins <= 15:
+                phase = "warning"
+                is_critical = False
+                is_warning = True
+            elif elapsed_pct < 10:
+                phase = "starting"
+                is_critical = False
+                is_warning = False
+            else:
+                phase = "scanning"
+                is_critical = False
+                is_warning = False
+            
+            update_state({
+                "time": {
+                    "elapsed_minutes": round(elapsed_mins, 1),
+                    "remaining_minutes": round(remaining_mins, 1),
+                    "progress_percentage": round(elapsed_pct, 1),
+                    "phase": phase,
+                    "is_warning": is_warning,
+                    "is_critical": is_critical,
+                }
+            })
+        except Exception as e:
+            logger.debug(f"Failed to sync time to dashboard: {e}")

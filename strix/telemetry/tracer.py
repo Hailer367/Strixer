@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -12,6 +13,11 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_dashboard_enabled() -> bool:
+    """Check if dashboard updates should be sent."""
+    return os.getenv("STRIX_DASHBOARD_STATE_FILE") is not None
 
 _global_tracer: Optional["Tracer"] = None
 
@@ -139,6 +145,29 @@ class Tracer:
         self.vulnerability_reports.append(report)
         logger.info(f"Added vulnerability report: {report_id} - {title}")
         posthog.finding(severity)
+        
+        # Update dashboard with vulnerability
+        if _is_dashboard_enabled():
+            try:
+                from strix.dashboard.state import add_vulnerability, add_live_feed_entry
+                
+                add_vulnerability({
+                    "id": report_id,
+                    "severity": severity.lower().strip(),
+                    "title": title.strip(),
+                    "description": (description or "")[:500],
+                    "endpoint": endpoint or target or "",
+                    "evidence": (poc_description or technical_analysis or "")[:200],
+                })
+                
+                add_live_feed_entry(
+                    entry_type="vulnerability",
+                    message=f"[{severity.upper()}] {title}",
+                    severity=severity.lower().strip(),
+                    tool="vulnerability_scan"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to update dashboard vulnerability: {e}")
 
         if self.vulnerability_found_callback:
             self.vulnerability_found_callback(report)
@@ -201,6 +230,9 @@ class Tracer:
         }
 
         self.agents[agent_id] = agent_data
+        
+        # Update dashboard state
+        self._sync_agents_to_dashboard()
 
     def log_chat_message(
         self,
@@ -246,15 +278,71 @@ class Tracer:
         if agent_id in self.agents:
             self.agents[agent_id]["tool_executions"].append(execution_id)
 
+        # Add to dashboard live feed
+        if _is_dashboard_enabled():
+            try:
+                from strix.dashboard.state import add_live_feed_entry
+                # Format args for display
+                args_str = str(args)[:200] if args else ""
+                add_live_feed_entry(
+                    entry_type="tool_start",
+                    message=f"Starting: {tool_name}",
+                    tool=tool_name,
+                    input=args_str,
+                    severity="info"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to update dashboard live feed: {e}")
+
         return execution_id
 
     def update_tool_execution(
         self, execution_id: int, status: str, result: Any | None = None
     ) -> None:
         if execution_id in self.tool_executions:
-            self.tool_executions[execution_id]["status"] = status
-            self.tool_executions[execution_id]["result"] = result
-            self.tool_executions[execution_id]["completed_at"] = datetime.now(UTC).isoformat()
+            exec_data = self.tool_executions[execution_id]
+            exec_data["status"] = status
+            exec_data["result"] = result
+            exec_data["completed_at"] = datetime.now(UTC).isoformat()
+            
+            # Calculate duration
+            duration_ms = 0
+            try:
+                started = datetime.fromisoformat(exec_data["started_at"].replace("Z", "+00:00"))
+                completed = datetime.fromisoformat(exec_data["completed_at"].replace("Z", "+00:00"))
+                duration_ms = int((completed - started).total_seconds() * 1000)
+            except (ValueError, TypeError, KeyError):
+                pass
+            
+            # Update dashboard with tool execution
+            if _is_dashboard_enabled():
+                try:
+                    from strix.dashboard.state import add_tool_execution, add_live_feed_entry
+                    
+                    tool_name = exec_data.get("tool_name", "unknown")
+                    args_str = str(exec_data.get("args", ""))[:500]
+                    result_str = str(result)[:1000] if result else ""
+                    
+                    # Add to tool executions list
+                    add_tool_execution(
+                        tool=tool_name,
+                        input_str=args_str,
+                        output_str=result_str,
+                        status=status,
+                        duration_ms=duration_ms
+                    )
+                    
+                    # Add to live feed
+                    severity = "info" if status == "completed" else "medium" if status == "failed" else "info"
+                    add_live_feed_entry(
+                        entry_type="tool_complete" if status == "completed" else "tool_failed",
+                        message=f"{tool_name}: {status}",
+                        tool=tool_name,
+                        output=result_str[:200],
+                        severity=severity
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to update dashboard tool execution: {e}")
 
     def update_agent_status(
         self, agent_id: str, status: str, error_message: str | None = None
@@ -264,6 +352,26 @@ class Tracer:
             self.agents[agent_id]["updated_at"] = datetime.now(UTC).isoformat()
             if error_message:
                 self.agents[agent_id]["error_message"] = error_message
+            
+            # Update dashboard state
+            self._sync_agents_to_dashboard()
+            
+            # Add to live feed for status changes
+            if _is_dashboard_enabled():
+                try:
+                    from strix.dashboard.state import add_live_feed_entry
+                    agent_name = self.agents[agent_id].get("name", agent_id)
+                    message = f"Agent '{agent_name}' status: {status}"
+                    if error_message:
+                        message += f" - {error_message[:100]}"
+                    severity = "critical" if status in ("failed", "error") else "info"
+                    add_live_feed_entry(
+                        entry_type="agent_status",
+                        message=message,
+                        severity=severity
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to update dashboard agent status: {e}")
 
     def set_scan_config(self, config: dict[str, Any]) -> None:
         self.scan_config = config
@@ -275,6 +383,55 @@ class Tracer:
             }
         )
         self.get_run_dir()
+        
+        # Initialize dashboard with scan config
+        if _is_dashboard_enabled():
+            try:
+                from strix.dashboard.state import update_state, add_live_feed_entry
+                import os
+                
+                # Extract target info
+                targets = config.get("targets", [])
+                target_str = ""
+                if targets and len(targets) > 0:
+                    first_target = targets[0]
+                    details = first_target.get("details", {})
+                    target_str = (
+                        details.get("target_repo") or 
+                        details.get("target_url") or 
+                        details.get("target_path") or 
+                        details.get("target_ip") or 
+                        "./"
+                    )
+                
+                # Get timeframe from environment
+                timeframe = int(os.getenv("STRIX_SCAN_DURATION_MINUTES", "60"))
+                model = os.getenv("STRIX_LLM", "qwen3-coder-plus")
+                scan_mode = os.getenv("SCAN_MODE", "deep")
+                
+                update_state({
+                    "scan_config": {
+                        "target": target_str,
+                        "timeframe": timeframe,
+                        "scan_mode": scan_mode,
+                        "model": model,
+                        "prompt": config.get("user_instructions", ""),
+                    },
+                    "time": {
+                        "duration_minutes": timeframe,
+                        "remaining_minutes": timeframe,
+                        "progress_percentage": 0,
+                        "phase": "starting",
+                    }
+                })
+                
+                add_live_feed_entry(
+                    entry_type="scan_start",
+                    message=f"Scan started: {target_str}",
+                    severity="info"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to initialize dashboard scan config: {e}")
 
     def save_run_data(self, mark_complete: bool = False) -> None:  # noqa: PLR0912, PLR0915
         try:
@@ -475,3 +632,62 @@ class Tracer:
 
     def cleanup(self) -> None:
         self.save_run_data(mark_complete=True)
+    
+    def _sync_agents_to_dashboard(self) -> None:
+        """Sync agent data to dashboard state."""
+        if not _is_dashboard_enabled():
+            return
+        
+        try:
+            from strix.dashboard.state import update_state
+            
+            # Convert agents to dashboard format
+            agents_list = []
+            active_count = 0
+            for agent_id, agent_data in self.agents.items():
+                agent_info = {
+                    "id": agent_id,
+                    "name": agent_data.get("name", "Unknown"),
+                    "type": "orchestrator" if agent_data.get("parent_id") is None else "scanner",
+                    "parent_id": agent_data.get("parent_id"),
+                    "status": agent_data.get("status", "idle"),
+                    "current_task": agent_data.get("task", "")[:100],
+                    "tool_count": len(agent_data.get("tool_executions", [])),
+                }
+                agents_list.append(agent_info)
+                if agent_data.get("status") == "running":
+                    active_count += 1
+            
+            # Update dashboard state
+            update_state({
+                "agents": agents_list,
+                "stats": {
+                    "active_agents": max(1, active_count),
+                    "api_calls": len(self.chat_messages),
+                }
+            })
+        except Exception as e:
+            logger.debug(f"Failed to sync agents to dashboard: {e}")
+    
+    def _sync_stats_to_dashboard(self) -> None:
+        """Sync statistics to dashboard state."""
+        if not _is_dashboard_enabled():
+            return
+        
+        try:
+            from strix.dashboard.state import update_state
+            
+            # Get LLM stats
+            llm_stats = self.get_total_llm_stats()
+            
+            update_state({
+                "stats": {
+                    "api_calls": llm_stats.get("total", {}).get("requests", 0),
+                    "tokens_used": llm_stats.get("total_tokens", 0),
+                    "cost_usd": llm_stats.get("total", {}).get("cost", 0.0),
+                    "tools_executed": self.get_real_tool_count(),
+                    "vulnerabilities_found": len(self.vulnerability_reports),
+                }
+            })
+        except Exception as e:
+            logger.debug(f"Failed to sync stats to dashboard: {e}")

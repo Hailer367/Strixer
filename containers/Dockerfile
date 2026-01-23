@@ -34,7 +34,7 @@ RUN apt-get update && \
     less man-db procps htop \
     iproute2 iputils-ping netcat-traditional \
     nmap ncat ndiff \
-    sqlmap nuclei subfinder naabu ffuf \
+    sqlmap nuclei subfinder naabu ffuf whatweb theharvester \
     nodejs npm pipx \
     libcap2-bin \
     gdb \
@@ -140,6 +140,23 @@ RUN apt-get autoremove -y && \
 ENV PATH="/home/pentester/go/bin:/home/pentester/.local/bin:/home/pentester/.npm-global/bin:/app/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/venv"
 ENV POETRY_HOME="/opt/poetry"
+
+# Install Feroxbuster
+RUN curl -sL https://github.com/epi052/feroxbuster/releases/latest/download/feroxbuster_amd64.zip.gz | gunzip -c > /usr/local/bin/feroxbuster && \
+    chmod +x /usr/local/bin/feroxbuster
+
+# Install Kiterunner (kr)
+RUN curl -sL https://github.com/assetnote/kiterunner/releases/download/v1.0.2/kiterunner_1.0.2_linux_amd64.tar.gz | tar xz -C /usr/local/bin kr
+
+# Install GraphQL Tools
+RUN pipx install clairvoyance && \
+    git clone https://github.com/doyensec/graphw00f.git /home/pentester/tools/graphw00f && \
+    pipx install /home/pentester/tools/graphw00f
+
+# Download Basic Wordlists
+RUN mkdir -p /home/pentester/wordlists && \
+    curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt -o /home/pentester/wordlists/raft-medium-files.txt && \
+    curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt -o /home/pentester/wordlists/common.txt
 
 WORKDIR /app
 

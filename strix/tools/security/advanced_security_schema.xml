@@ -1,0 +1,100 @@
+<tools>
+  <!-- Recon Actions -->
+  <tool name="whatweb_scan">
+    <description>
+      Fingerprints a target web application to identify CMS, server, libraries, and frameworks.
+    </description>
+    <parameters>
+      <parameter name="target" type="string" required="true">
+        <description>The target URL to scan.</description>
+      </parameter>
+      <parameter name="aggression" type="integer" required="false">
+        <description>Aggression level (1-4). 1 is passive, 4 is aggressive. Default is 1.</description>
+      </parameter>
+      <parameter name="verbose" type="boolean" required="false">
+        <description>If true, returns detailed plugin information.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="theharvester_search">
+    <description>
+      Gathers OSINT information (emails, subdomains, virtual hosts) for a domain from public sources.
+    </description>
+    <parameters>
+      <parameter name="domain" type="string" required="true">
+        <description>The target domain to research.</description>
+      </parameter>
+      <parameter name="limit" type="integer" required="false">
+        <description>Maximum number of results to fetch per source. Default is 100.</description>
+      </parameter>
+      <parameter name="source" type="string" required="false">
+        <description>The search engine/source to use (e.g., 'google', 'bing', 'all'). Default is 'all'.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <!-- Fuzz Actions -->
+  <tool name="feroxbuster_scan">
+    <description>
+      High-speed recursive directory discovery. Best for finding hidden files and folders.
+    </description>
+    <parameters>
+      <parameter name="target" type="string" required="true">
+        <description>The target URL to fuzz.</description>
+      </parameter>
+      <parameter name="wordlist" type="string" required="false">
+        <description>Path to a custom wordlist. Default is raft-medium-files.txt.</description>
+      </parameter>
+      <parameter name="threads" type="integer" required="false">
+        <description>Number of concurrent threads. Default is 50.</description>
+      </parameter>
+      <parameter name="extensions" type="string" required="false">
+        <description>Comma-separated file extensions to look for (e.g., 'php,txt,bak').</description>
+      </parameter>
+      <parameter name="depth" type="integer" required="false">
+        <description>Recursion depth. Default is 1 (no recursion).</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="kiterunner_scan">
+    <description>
+      Scans for API endpoints with specialized wordlists. Better than generic fuzzers for APIs.
+    </description>
+    <parameters>
+      <parameter name="target" type="string" required="true">
+        <description>The target URL or IP to scan.</description>
+      </parameter>
+      <parameter name="wordlist" type="string" required="false">
+        <description>The wordlist to use. Default is common.txt.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <!-- GraphQL Actions -->
+  <tool name="graphw00f_scan">
+    <description>
+      Fingerprints the specific GraphQL engine running on a target endpoint.
+    </description>
+    <parameters>
+      <parameter name="target" type="string" required="true">
+        <description>The GraphQL endpoint URL (e.g., http://target/graphql).</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="clairvoyance_scan">
+    <description>
+      Attempts to reconstruct a GraphQL schema from an endpoint using brute-force if introspection is disabled.
+    </description>
+    <parameters>
+      <parameter name="target" type="string" required="true">
+        <description>The GraphQL endpoint URL.</description>
+      </parameter>
+      <parameter name="wordlist" type="string" required="false">
+        <description>Custom wordlist for field brute-forcing.</description>
+      </parameter>
+    </parameters>
+  </tool>
+</tools>

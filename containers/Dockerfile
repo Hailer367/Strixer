@@ -34,7 +34,7 @@ RUN apt-get update && \
     less man-db procps htop \
     iproute2 iputils-ping netcat-traditional \
     nmap ncat ndiff \
-    sqlmap nuclei subfinder naabu ffuf whatweb theharvester feroxbuster \
+    sqlmap nuclei subfinder naabu ffuf whatweb theharvester feroxbuster python3-requests \
     nodejs npm pipx \
     libcap2-bin \
     gdb \
@@ -151,10 +151,11 @@ RUN pipx install clairvoyance && \
     curl -sSL https://github.com/dolevf/graphw00f/archive/refs/heads/main.tar.gz -o /tmp/graphw00f.tar.gz && \
     mkdir -p /home/pentester/tools/graphw00f && \
     tar -xzf /tmp/graphw00f.tar.gz -C /home/pentester/tools/graphw00f --strip-components=1 && \
-    pipx install /home/pentester/tools/graphw00f && \
     rm /tmp/graphw00f.tar.gz
 
 USER root
+RUN echo '#!/bin/bash\npython3 /home/pentester/tools/graphw00f/main.py "$@"' > /usr/local/bin/graphw00f && \
+    chmod +x /usr/local/bin/graphw00f
 
 # Download Basic Wordlists
 RUN mkdir -p /home/pentester/wordlists && \

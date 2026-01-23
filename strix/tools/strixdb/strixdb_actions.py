@@ -451,6 +451,18 @@ def strixdb_search(
         data = response.json()
         results = []
 
+        # Knowledge Graph Integration: Try to find related entities for the search query
+        graph_context = {}
+        try:
+            from strix.tools.knowledge_graph.graph_engine import GraphEngine
+            # We assume a default target scope or global
+            engine = GraphEngine.load_from_strixdb(strixdb_actions=None) # We'll need a way to pass self
+            # For now, we skip auto-injection to avoid circularity, 
+            # but we flag that graph data is available.
+            graph_context = {"hint": "Use get_entity_context for relational insights"}
+        except Exception:
+            pass
+
         for item in data.get("items", []):
             path = item.get("path", "")
             if "_meta.json" in path:

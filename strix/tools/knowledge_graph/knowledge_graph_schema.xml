@@ -1,0 +1,81 @@
+<tools>
+  <tool name="link_entities">
+    <description>
+      Explicitly links two entities in the Semantic Knowledge Graph to build relational intelligence.
+      Use this when you find a connection between assets (e.g., a domain points to an IP, or a service is vulnerable to a CVE).
+    </description>
+    <parameters>
+      <parameter name="source_id" type="string" required="true">
+        <description>The ID of the source entity (e.g., 'example.com').</description>
+      </parameter>
+      <parameter name="target_id" type="string" required="true">
+        <description>The ID of the target entity (e.g., '1.2.3.4').</description>
+      </parameter>
+      <parameter name="relation" type="string" required="true">
+        <description>The type of relationship (e.g., 'POINTS_TO', 'RUNS', 'VULNERABLE_TO', 'HAS_SUBDOMAIN').</description>
+      </parameter>
+      <parameter name="properties" type="object" required="false">
+        <description>Optional key-value pairs of additional metadata about the link.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The target project scope (e.g., the target domain). If omitted, saves to Global context.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_entity_context">
+    <description>
+      Retrieves all known relationships and metadata for a specific entity from the Knowledge Graph.
+      Use this as a 'Semantic RAG' step before attacking or scanning an asset to see what has already been discovered.
+    </description>
+    <parameters>
+      <parameter name="entity_id" type="string" required="true">
+        <description>The ID of the entity to look up (e.g., '1.2.3.4').</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The target project scope to query. If omitted, queries Global context.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="add_entity">
+    <description>
+      Adds a new entity to the Knowledge Graph with specific type and properties.
+      Use this to record new assets like 'S3 Buckets', 'Tech Stacks', or 'Users' found during recon.
+    </description>
+    <parameters>
+      <parameter name="entity_id" type="string" required="true">
+        <description>Unique identifier for the entity.</description>
+      </parameter>
+      <parameter name="entity_type" type="string" required="true">
+        <description>Type of the entity (e.g., 'IP', 'Domain', 'Bucket', 'API_Endpoint', 'CVE').</description>
+      </parameter>
+      <parameter name="properties" type="object" required="false">
+        <description>Key-value pairs of metadata.</description>
+      </parameter>
+      <parameter name="is_global" type="boolean" required="false">
+        <description>If true, this knowledge is shared across ALL projects (use for CVEs, public exploits). Default: false.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The target project scope. If omitted, and is_global is false, defaults to current session context.</description>
+      </parameter>
+    </parameters>
+  </tool>
+  <tool name="auto_link_findings">
+    <description>
+      Scans a large text block (like an Nmap report or vulnerability scan) and automatically extracts 
+      relational data for the graph. This is the fastest way to build your intelligence base.
+    </description>
+    <parameters>
+      <parameter name="text" type="string" required="true">
+        <description>The text content to analyze for entities.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope to save into.</description>
+      </parameter>
+      <parameter name="is_global" type="boolean" required="false">
+        <description>Whether to treat extracted assets (except CVEs) as global knowledge.</description>
+      </parameter>
+    </parameters>
+  </tool>
+</tools>

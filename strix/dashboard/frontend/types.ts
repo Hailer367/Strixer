@@ -9,10 +9,13 @@ export enum AgentStatus {
 export interface AgentNode {
   id: string;
   name: string;
-  type: 'orchestrator' | 'scanner' | 'fuzzer' | 'exploiter' | 'reporter';
-  status: AgentStatus;
+  type: 'orchestrator' | 'scanner' | 'fuzzer' | 'exploiter' | 'reporter' | string;
+  status: AgentStatus | string;
   children?: AgentNode[];
   task?: string;
+  current_task?: string;
+  parent_id?: string | null;
+  tool_count?: number;
 }
 
 export interface ReasoningLog {
@@ -33,6 +36,9 @@ export interface DashboardStats {
   timeRemaining: number;
   vulnerabilitiesFound: number;
   activeAgents: number;
+  tokensUsed?: number;
+  costUsd?: number;
+  toolsExecuted?: number;
 }
 
 // Strix API State Types
@@ -114,4 +120,47 @@ export interface StrixState {
   stats: Stats;
   live_feed: LiveFeedEntry[];
   last_updated: string;
+}
+
+// Helper function to convert AgentInfo array to tree structure
+export function buildAgentTree(agents: AgentInfo[]): AgentNode | null {
+  if (!agents || agents.length === 0) {
+    return null;
+  }
+
+  // Create a map of agents by ID
+  const agentsById: Map<string, AgentNode> = new Map();
+  
+  agents.forEach(agent => {
+    agentsById.set(agent.id, {
+      id: agent.id,
+      name: agent.name,
+      type: agent.type,
+      status: agent.status.toUpperCase() as AgentStatus,
+      current_task: agent.current_task,
+      task: agent.current_task,
+      parent_id: agent.parent_id,
+      tool_count: agent.tool_count,
+      children: []
+    });
+  });
+
+  // Build tree structure
+  let root: AgentNode | null = null;
+
+  agentsById.forEach((agent, id) => {
+    const parentId = agent.parent_id;
+    if (parentId && agentsById.has(parentId)) {
+      const parent = agentsById.get(parentId)!;
+      if (!parent.children) parent.children = [];
+      parent.children.push(agent);
+    } else {
+      // This is a root node (no parent or parent not found)
+      if (!root || agent.type === 'orchestrator') {
+        root = agent;
+      }
+    }
+  });
+
+  return root;
 }

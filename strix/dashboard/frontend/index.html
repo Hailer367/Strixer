@@ -1,30 +1,48 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinel-AI Bug Bounty Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Strix Security Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦉</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        html, body, #root {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
         
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background-color: #020617;
             color: #f8fafc;
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         .mono {
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
         }
 
+        /* Custom Scrollbar */
         ::-webkit-scrollbar {
             width: 4px;
+            height: 4px;
         }
         ::-webkit-scrollbar-track {
-            background: #0f172a;
+            background: transparent;
         }
         ::-webkit-scrollbar-thumb {
             background: #334155;
@@ -34,32 +52,106 @@
             background: #475569;
         }
 
+        /* Firefox scrollbar */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #334155 transparent;
+        }
+
+        /* Cyber grid background */
         .cyber-grid {
-            background-image: linear-gradient(to right, #1e293b 1px, transparent 1px),
-                              linear-gradient(to bottom, #1e293b 1px, transparent 1px);
+            background-image: 
+                linear-gradient(to right, rgba(30, 41, 59, 0.3) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(30, 41, 59, 0.3) 1px, transparent 1px);
             background-size: 40px 40px;
             background-position: center center;
         }
 
+        /* Glow effects */
         .glow-cyan {
             box-shadow: 0 0 15px rgba(34, 211, 238, 0.2);
         }
+        
+        .glow-rose {
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.2);
+        }
+
+        /* Animation utilities */
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-pulse-glow {
+            animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            .cyber-grid {
+                background-size: 20px 20px;
+            }
+        }
+
+        /* Prevent pull-to-refresh on mobile */
+        body {
+            overscroll-behavior-y: contain;
+        }
+
+        /* Safe area insets for notched devices */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            body {
+                padding-left: env(safe-area-inset-left);
+                padding-right: env(safe-area-inset-right);
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+        }
+
+        /* Tailwind animate-in classes */
+        .animate-in {
+            animation-name: enter;
+            animation-duration: 150ms;
+            animation-fill-mode: both;
+        }
+        
+        .fade-in {
+            --tw-enter-opacity: initial;
+            animation-name: fadeIn;
+        }
+        
+        .slide-in-from-bottom-4 {
+            --tw-enter-translate-y: 1rem;
+            animation-name: slideInFromBottom;
+        }
+        
+        .slide-in-from-top-2 {
+            --tw-enter-translate-y: -0.5rem;
+            animation-name: slideInFromTop;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInFromBottom {
+            from { transform: translateY(1rem); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes slideInFromTop {
+            from { transform: translateY(-0.5rem); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .duration-200 { animation-duration: 200ms; }
+        .duration-300 { animation-duration: 300ms; }
+        .duration-500 { animation-duration: 500ms; }
+        .duration-700 { animation-duration: 700ms; }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="cyber-grid min-h-screen">
     <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

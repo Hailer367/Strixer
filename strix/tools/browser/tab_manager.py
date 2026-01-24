@@ -353,6 +353,162 @@ class BrowserTabManager:
     def _register_cleanup_handlers(self) -> None:
         atexit.register(self.close_all)
 
+    # Advanced Security Methods
+    
+    def get_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Get all cookies for the current page domain."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.get_cookies(tab_id)
+            result["message"] = f"Retrieved {len(result.get('cookies', []))} cookies"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to get cookies: {e}") from e
+        else:
+            return result
+    
+    def set_cookie(self, cookie_data: dict, tab_id: str | None = None) -> dict[str, Any]:
+        """Set a cookie with the provided data."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.set_cookie(cookie_data, tab_id)
+            result["message"] = f"Cookie '{cookie_data.get('name', 'unknown')}' set"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to set cookie: {e}") from e
+        else:
+            return result
+    
+    def delete_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Delete all cookies for the current context."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.delete_cookies(tab_id)
+            result["message"] = "All cookies deleted"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to delete cookies: {e}") from e
+        else:
+            return result
+    
+    def get_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        """Get localStorage or sessionStorage data."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.get_storage(storage_type, tab_id)
+            result["message"] = f"Retrieved {storage_type}Storage data"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to get storage: {e}") from e
+        else:
+            return result
+    
+    def clear_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        """Clear localStorage, sessionStorage, or both."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.clear_storage(storage_type, tab_id)
+            result["message"] = f"Cleared {storage_type} storage"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to clear storage: {e}") from e
+        else:
+            return result
+    
+    def get_network_logs(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Get captured network request logs."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.get_network_logs(tab_id)
+            result["message"] = f"Retrieved {len(result.get('requests', []))} network logs"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to get network logs: {e}") from e
+        else:
+            return result
+    
+    def analyze_dom(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Perform security analysis of the DOM structure."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.analyze_dom(tab_id)
+            result["message"] = "DOM analysis complete"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to analyze DOM: {e}") from e
+        else:
+            return result
+    
+    def find_forms(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Find and analyze all forms on the page."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.find_forms(tab_id)
+            result["message"] = f"Found {len(result.get('forms', []))} forms"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to find forms: {e}") from e
+        else:
+            return result
+    
+    def extract_links(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Extract all links from the page."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.extract_links(tab_id)
+            result["message"] = f"Extracted {len(result.get('links', []))} links"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to extract links: {e}") from e
+        else:
+            return result
+    
+    def check_headers(self, tab_id: str | None = None) -> dict[str, Any]:
+        """Check and analyze security headers."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.check_headers(tab_id)
+            result["message"] = "Security headers analyzed"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to check headers: {e}") from e
+        else:
+            return result
+    
+    def screenshot_element(self, selector: str, tab_id: str | None = None) -> dict[str, Any]:
+        """Take screenshot of a specific element."""
+        browser = self._get_agent_browser()
+        if browser is None:
+            raise ValueError("Browser not launched")
+        
+        try:
+            result = browser.screenshot_element(selector, tab_id)
+            result["message"] = f"Screenshot taken for element: {selector}"
+        except (OSError, ValueError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to screenshot element: {e}") from e
+        else:
+            return result
+
 
 _browser_tab_manager = BrowserTabManager()
 

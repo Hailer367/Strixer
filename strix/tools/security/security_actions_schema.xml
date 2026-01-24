@@ -1,9 +1,56 @@
 <tools>
+  <description>
+    Advanced Security Testing Tools - WAF Evasion and Payload Mutation
+    
+    These tools provide comprehensive WAF bypass and payload mutation capabilities:
+    - Advanced WAF fingerprinting with confidence scoring
+    - Polymorphic payload mutation across multiple strategies
+    - Adaptive learning from blocked/successful attempts
+    - Protocol-level evasion techniques
+    - Encoding chain generation
+    
+    WORKFLOW:
+    1. Use waf_fingerprint to identify the WAF
+    2. Use waf_probe to initialize evasion session
+    3. Use mutate_payload or generate_*_bypasses for specific payloads
+    4. Use record_bypass_attempt to track results
+    5. Use get_adaptive_mutations for refined attempts
+  </description>
+
+  <tool name="waf_fingerprint">
+    <description>
+      Advanced WAF fingerprinting with confidence scoring.
+      
+      Analyzes HTTP response to identify WAF vendor with detailed
+      confidence scoring and bypass recommendations.
+      
+      USE THIS FIRST before attempting any bypasses!
+    </description>
+    <parameters>
+      <parameter name="headers" type="dict" required="true">
+        <description>Response headers from the blocked request.</description>
+      </parameter>
+      <parameter name="body" type="string" required="true">
+        <description>Response body from the blocked request.</description>
+      </parameter>
+      <parameter name="status_code" type="integer" required="true">
+        <description>HTTP status code (e.g., 403, 406).</description>
+      </parameter>
+      <parameter name="cookies" type="dict" required="false">
+        <description>Response cookies for additional fingerprinting.</description>
+      </parameter>
+    </parameters>
+    <returns>
+      WAF vendor, confidence score, signatures matched, recommended strategies, known bypasses.
+    </returns>
+  </tool>
+
   <tool name="waf_probe">
     <description>
-      Initiates a smart analysis of a WAF-blocked endpoint. 
-      Returns a list of heuristic mutation strategies that might bypass the filter.
-      Use this when you receive a 403 Forbidden or 406 Not Acceptable.
+      Initialize a WAF evasion probe session.
+      
+      Creates an evasion context and generates initial mutations.
+      Use as the first step when a request is blocked.
     </description>
     <parameters>
       <parameter name="url" type="string" required="true">
@@ -20,32 +67,194 @@
 
   <tool name="mutate_payload">
     <description>
-      Generates polymorphic variations of a payload using deterministic strategies.
-      Strategies include: SQL_InlineComments, SQL_MixedCase, SQL_TabWhitespace, URL_DoubleEncoding, XSS_ImageOnerror, XSS_UnicodeEscape.
+      Generate payload mutations using specified strategy.
+      
+      Strategies available:
+      - all: All strategies combined
+      - encoding: URL, HTML, Unicode, Base64, Hex encodings
+      - syntax: Whitespace, comments, case mutations
+      - semantic: Keyword alternatives, equivalent expressions
+      - protocol: HTTP parameter pollution, multipart tricks
+      - polymorphic: Combined multi-technique mutations
+      - fragmentation: Chunked encoding, null byte injection
     </description>
     <parameters>
       <parameter name="payload" type="string" required="true">
         <description>The payload to mutate.</description>
       </parameter>
       <parameter name="strategy" type="string" required="false">
-        <description>Specific strategy to apply or 'all'. Default: all.</description>
+        <description>Mutation strategy or 'all'. Default: all.</description>
+      </parameter>
+      <parameter name="max_mutations" type="integer" required="false">
+        <description>Maximum mutations to generate. Default: 20.</description>
+      </parameter>
+      <parameter name="waf_vendor" type="string" required="false">
+        <description>Target WAF vendor for prioritization.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_adaptive_mutations">
+    <description>
+      Generate adaptive mutations based on previous attempts.
+      
+      Learns from blocked/successful attempts to prioritize
+      techniques more likely to succeed.
+    </description>
+    <parameters>
+      <parameter name="payload" type="string" required="true">
+        <description>The payload to mutate.</description>
+      </parameter>
+      <parameter name="blocked_payloads" type="array" required="false">
+        <description>List of previously blocked payloads.</description>
+      </parameter>
+      <parameter name="blocked_techniques" type="array" required="false">
+        <description>List of techniques that failed.</description>
+      </parameter>
+      <parameter name="successful_techniques" type="array" required="false">
+        <description>List of techniques that worked.</description>
+      </parameter>
+      <parameter name="waf_vendor" type="string" required="false">
+        <description>Target WAF vendor.</description>
+      </parameter>
+      <parameter name="max_mutations" type="integer" required="false">
+        <description>Maximum mutations. Default: 15.</description>
       </parameter>
     </parameters>
   </tool>
 
   <tool name="detect_waf_signature">
     <description>
-      Analyzes HTTP response artifacts to identify the specific WAF vendor (Cloudflare, AWS, etc.).
+      Quick WAF detection (use waf_fingerprint for detailed analysis).
     </description>
     <parameters>
       <parameter name="headers" type="dict" required="true">
-        <description>Response headers from the blocked request.</description>
+        <description>Response headers.</description>
       </parameter>
       <parameter name="body" type="string" required="true">
-        <description>Response body from the blocked request.</description>
+        <description>Response body.</description>
       </parameter>
       <parameter name="status" type="integer" required="true">
-        <description>HTTP status code (e.g., 403).</description>
+        <description>HTTP status code.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="encode_payload">
+    <description>
+      Encode a payload using a specific encoding.
+      
+      Encodings: url, url_double, url_unicode, html_entity,
+      html_entity_decimal, html_entity_hex, base64, hex,
+      unicode_escape, octal.
+    </description>
+    <parameters>
+      <parameter name="payload" type="string" required="true">
+        <description>Payload to encode.</description>
+      </parameter>
+      <parameter name="encoding" type="string" required="true">
+        <description>Encoding type to apply.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="encode_payload_chain">
+    <description>
+      Apply a chain of encodings to a payload.
+      Each encoding is applied in sequence.
+    </description>
+    <parameters>
+      <parameter name="payload" type="string" required="true">
+        <description>Payload to encode.</description>
+      </parameter>
+      <parameter name="encodings" type="array" required="true">
+        <description>List of encodings to apply in order.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_waf_bypass_techniques">
+    <description>
+      Get known bypass techniques for a WAF vendor.
+    </description>
+    <parameters>
+      <parameter name="waf_vendor" type="string" required="false">
+        <description>WAF vendor name (or omit for all).</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="record_bypass_attempt">
+    <description>
+      Record a bypass attempt for adaptive learning.
+      Records both successful and failed attempts.
+    </description>
+    <parameters>
+      <parameter name="original_payload" type="string" required="true">
+        <description>Original blocked payload.</description>
+      </parameter>
+      <parameter name="mutated_payload" type="string" required="true">
+        <description>Mutated payload that was tested.</description>
+      </parameter>
+      <parameter name="technique" type="string" required="true">
+        <description>Mutation technique used.</description>
+      </parameter>
+      <parameter name="success" type="boolean" required="true">
+        <description>Whether the bypass was successful.</description>
+      </parameter>
+      <parameter name="waf_vendor" type="string" required="false">
+        <description>WAF vendor name.</description>
+      </parameter>
+      <parameter name="target_url" type="string" required="false">
+        <description>Target URL.</description>
+      </parameter>
+      <parameter name="response_code" type="integer" required="false">
+        <description>HTTP response code received.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_bypass_history">
+    <description>
+      Get recorded successful bypasses from the session.
+    </description>
+    <parameters>
+      <parameter name="waf_vendor" type="string" required="false">
+        <description>Filter by WAF vendor.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="generate_sqli_bypasses">
+    <description>
+      Generate SQL injection specific bypass payloads.
+      
+      Focuses on SQL techniques: inline comments, case toggling,
+      whitespace alternatives, keyword alternatives.
+    </description>
+    <parameters>
+      <parameter name="payload" type="string" required="true">
+        <description>SQL injection payload to mutate.</description>
+      </parameter>
+      <parameter name="max_mutations" type="integer" required="false">
+        <description>Maximum mutations. Default: 15.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="generate_xss_bypasses">
+    <description>
+      Generate XSS specific bypass payloads.
+      
+      Focuses on XSS techniques: tag alternatives, event handlers,
+      encoding tricks, protocol handlers.
+    </description>
+    <parameters>
+      <parameter name="payload" type="string" required="true">
+        <description>XSS payload to mutate.</description>
+      </parameter>
+      <parameter name="max_mutations" type="integer" required="false">
+        <description>Maximum mutations. Default: 15.</description>
       </parameter>
     </parameters>
   </tool>

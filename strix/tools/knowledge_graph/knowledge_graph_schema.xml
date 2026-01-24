@@ -1,8 +1,29 @@
 <tools>
+  <description>
+    Advanced Knowledge Graph (RAG) Tools - Semantic Intelligence for Security Operations
+    
+    These tools build and query a sophisticated knowledge graph that serves as the
+    intelligence backbone for security operations. Use these for:
+    
+    - Multi-hop reasoning about target relationships
+    - Attack path discovery and exploitation chain mapping
+    - Risk analysis and vulnerability correlation
+    - Automatic entity extraction from scan output
+    - Cross-engagement knowledge sharing
+    
+    CRITICAL: Always query the knowledge graph BEFORE attacking a target to leverage
+    existing intelligence and avoid redundant work.
+  </description>
+
   <tool name="link_entities">
     <description>
-      Explicitly links two entities in the Semantic Knowledge Graph to build relational intelligence.
-      Use this when you find a connection between assets (e.g., a domain points to an IP, or a service is vulnerable to a CVE).
+      Link two entities in the Semantic Knowledge Graph with enhanced metadata.
+      Use this to build relational intelligence between discovered assets.
+      
+      Common relations: POINTS_TO, RESOLVES_TO, HAS_SUBDOMAIN, RUNS_SERVICE,
+      HAS_PORT, USES_TECHNOLOGY, VULNERABLE_TO, EXPLOITED_BY, AUTHENTICATED_AS,
+      ACCESSES, CONTAINS, BELONGS_TO, PROTECTED_BY, BYPASSED_WITH, DISCOVERED_VIA,
+      RELATED_TO, LEADS_TO, DEPENDS_ON, COMMUNICATES_WITH, SAME_AS.
     </description>
     <parameters>
       <parameter name="source_id" type="string" required="true">
@@ -12,59 +33,102 @@
         <description>The ID of the target entity (e.g., '1.2.3.4').</description>
       </parameter>
       <parameter name="relation" type="string" required="true">
-        <description>The type of relationship (e.g., 'POINTS_TO', 'RUNS', 'VULNERABLE_TO', 'HAS_SUBDOMAIN').</description>
+        <description>The type of relationship.</description>
       </parameter>
       <parameter name="properties" type="object" required="false">
-        <description>Optional key-value pairs of additional metadata about the link.</description>
+        <description>Additional metadata about the link.</description>
       </parameter>
       <parameter name="target_scope" type="string" required="false">
-        <description>The target project scope (e.g., the target domain). If omitted, saves to Global context.</description>
+        <description>The target project scope. If omitted, saves to Global context.</description>
+      </parameter>
+      <parameter name="confidence" type="float" required="false">
+        <description>Confidence score for this relationship (0-1). Default: 1.0.</description>
+      </parameter>
+      <parameter name="bidirectional" type="boolean" required="false">
+        <description>Whether the relationship goes both ways. Default: false.</description>
+      </parameter>
+      <parameter name="evidence" type="array" required="false">
+        <description>List of evidence strings supporting this relationship.</description>
       </parameter>
     </parameters>
   </tool>
 
   <tool name="get_entity_context">
     <description>
-      Retrieves all known relationships and metadata for a specific entity from the Knowledge Graph.
-      Use this as a 'Semantic RAG' step before attacking or scanning an asset to see what has already been discovered.
+      CRITICAL RAG TOOL: Advanced context retrieval with multi-hop traversal.
+      
+      Retrieves comprehensive intelligence about an entity including:
+      - All connected entities up to specified depth
+      - Risk analysis and scoring
+      - Attack pattern detection
+      - Intelligence summary
+      
+      USE THIS BEFORE performing security operations to understand target context!
     </description>
     <parameters>
       <parameter name="entity_id" type="string" required="true">
         <description>The ID of the entity to look up (e.g., '1.2.3.4').</description>
       </parameter>
       <parameter name="target_scope" type="string" required="false">
-        <description>The target project scope to query. If omitted, queries Global context.</description>
+        <description>The target project scope. If omitted, queries Global context.</description>
+      </parameter>
+      <parameter name="depth" type="integer" required="false">
+        <description>How many hops to traverse (1-5). Higher = more context. Default: 2.</description>
+      </parameter>
+      <parameter name="include_risk" type="boolean" required="false">
+        <description>Include risk analysis in response. Default: true.</description>
+      </parameter>
+      <parameter name="include_patterns" type="boolean" required="false">
+        <description>Include attack pattern detection. Default: true.</description>
+      </parameter>
+      <parameter name="max_nodes" type="integer" required="false">
+        <description>Maximum nodes to include in context. Default: 50.</description>
       </parameter>
     </parameters>
   </tool>
 
   <tool name="add_entity">
     <description>
-      Adds a new entity to the Knowledge Graph with specific type and properties.
-      Use this to record new assets like 'S3 Buckets', 'Tech Stacks', or 'Users' found during recon.
+      Add an entity to the Knowledge Graph with specific type and properties.
+      
+      Supported types: IP, Domain, Subdomain, CVE, Service, Port, Technology,
+      Endpoint, Parameter, Vulnerability, Credential, User, Bucket, API_Key,
+      Secret, Certificate, WAF, CDN, Cloud_Resource, Network_Segment, Finding,
+      Payload, Session, Custom.
     </description>
     <parameters>
       <parameter name="entity_id" type="string" required="true">
         <description>Unique identifier for the entity.</description>
       </parameter>
       <parameter name="entity_type" type="string" required="true">
-        <description>Type of the entity (e.g., 'IP', 'Domain', 'Bucket', 'API_Endpoint', 'CVE').</description>
+        <description>Type of the entity.</description>
       </parameter>
       <parameter name="properties" type="object" required="false">
         <description>Key-value pairs of metadata.</description>
       </parameter>
       <parameter name="is_global" type="boolean" required="false">
-        <description>If true, this knowledge is shared across ALL projects (use for CVEs, public exploits). Default: false.</description>
+        <description>If true, shared across ALL projects. Default: false.</description>
       </parameter>
       <parameter name="target_scope" type="string" required="false">
-        <description>The target project scope. If omitted, and is_global is false, defaults to current session context.</description>
+        <description>The target project scope.</description>
+      </parameter>
+      <parameter name="confidence" type="float" required="false">
+        <description>Confidence in this entity's existence (0-1). Default: 1.0.</description>
+      </parameter>
+      <parameter name="tags" type="array" required="false">
+        <description>List of tags for categorization.</description>
       </parameter>
     </parameters>
   </tool>
+
   <tool name="auto_link_findings">
     <description>
-      Scans a large text block (like an Nmap report or vulnerability scan) and automatically extracts 
-      relational data for the graph. This is the fastest way to build your intelligence base.
+      Automatically extract and link entities from text (scan output, reports, etc.).
+      
+      Extracts: IPv4/IPv6, domains, CVEs, CWEs, URLs, emails, API keys, S3 buckets,
+      JWTs, private keys, MD5/SHA hashes, AWS keys, internal IPs, MAC addresses, versions.
+      
+      Use this to quickly build your knowledge base from tool output.
     </description>
     <parameters>
       <parameter name="text" type="string" required="true">
@@ -74,7 +138,217 @@
         <description>The project scope to save into.</description>
       </parameter>
       <parameter name="is_global" type="boolean" required="false">
-        <description>Whether to treat extracted assets (except CVEs) as global knowledge.</description>
+        <description>Whether to treat extracted assets as global knowledge.</description>
+      </parameter>
+      <parameter name="source" type="string" required="false">
+        <description>Source identifier (e.g., 'nmap_scan', 'nuclei'). Default: auto_extraction.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="find_attack_paths">
+    <description>
+      Find potential attack paths from a source entity to entities of a target type.
+      
+      Use this to discover exploitation chains and lateral movement opportunities.
+      Example: find_attack_paths("external_ip", "Credential", max_depth=4)
+    </description>
+    <parameters>
+      <parameter name="source_entity" type="string" required="true">
+        <description>Starting entity for the path search.</description>
+      </parameter>
+      <parameter name="target_type" type="string" required="true">
+        <description>Entity type to find paths to (e.g., 'Credential', 'CVE').</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope to search.</description>
+      </parameter>
+      <parameter name="max_depth" type="integer" required="false">
+        <description>Maximum path length. Default: 5.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_related_entities">
+    <description>
+      Get all entities directly related to a specific entity.
+      Optionally filter by relation type or entity type.
+    </description>
+    <parameters>
+      <parameter name="entity_id" type="string" required="true">
+        <description>The entity to find relationships for.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+      <parameter name="relation_filter" type="string" required="false">
+        <description>Filter by relation type (e.g., 'VULNERABLE_TO').</description>
+      </parameter>
+      <parameter name="type_filter" type="string" required="false">
+        <description>Filter by entity type (e.g., 'CVE').</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="infer_relationships">
+    <description>
+      Automatically infer relationships between entities based on patterns.
+      Detects: subdomain hierarchies, CVE-technology correlations, and more.
+    </description>
+    <parameters>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope to analyze.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_graph_statistics">
+    <description>
+      Get comprehensive statistics about the knowledge graph.
+      Returns node counts by type, edge counts by relation, query stats, etc.
+    </description>
+    <parameters>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="export_graph_visualization">
+    <description>
+      Export the knowledge graph for visualization.
+      Formats: cytoscape (web viz), neo4j (Cypher statements).
+    </description>
+    <parameters>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+      <parameter name="format" type="string" required="false">
+        <description>Export format: 'cytoscape' or 'neo4j'. Default: cytoscape.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="merge_graphs">
+    <description>
+      Merge knowledge from one scope into another.
+      Useful for combining intelligence from multiple engagements.
+    </description>
+    <parameters>
+      <parameter name="source_scope" type="string" required="true">
+        <description>Scope to merge FROM.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="true">
+        <description>Scope to merge INTO.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="query_by_type">
+    <description>
+      Query all entities of a specific type in the graph.
+      Useful for enumeration: "Show me all CVEs" or "List all discovered endpoints".
+    </description>
+    <parameters>
+      <parameter name="entity_type" type="string" required="true">
+        <description>Type of entities to query.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+      <parameter name="limit" type="integer" required="false">
+        <description>Maximum results. Default: 50.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_high_risk_entities">
+    <description>
+      Get all high-risk entities in the graph.
+      Risk scores are calculated based on entity type and confidence.
+      Use this to prioritize testing efforts.
+    </description>
+    <parameters>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+      <parameter name="min_risk_score" type="float" required="false">
+        <description>Minimum risk score threshold (0-1). Default: 0.7.</description>
+      </parameter>
+      <parameter name="limit" type="integer" required="false">
+        <description>Maximum results. Default: 20.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="add_vulnerability_context">
+    <description>
+      Add detailed vulnerability context to the graph.
+      Links the CVE to affected technologies and calculates risk propagation.
+    </description>
+    <parameters>
+      <parameter name="cve_id" type="string" required="true">
+        <description>CVE identifier (e.g., 'CVE-2023-12345').</description>
+      </parameter>
+      <parameter name="affected_product" type="string" required="true">
+        <description>Affected product/technology name.</description>
+      </parameter>
+      <parameter name="severity" type="string" required="true">
+        <description>Severity level (critical, high, medium, low).</description>
+      </parameter>
+      <parameter name="description" type="string" required="false">
+        <description>Vulnerability description.</description>
+      </parameter>
+      <parameter name="cvss_score" type="float" required="false">
+        <description>CVSS score if known.</description>
+      </parameter>
+      <parameter name="exploit_available" type="boolean" required="false">
+        <description>Whether a public exploit is available.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="record_waf_bypass">
+    <description>
+      Record a successful WAF bypass in the knowledge graph.
+      This creates reusable knowledge for future engagements.
+    </description>
+    <parameters>
+      <parameter name="waf_type" type="string" required="true">
+        <description>WAF vendor (Cloudflare, AWS, ModSecurity, etc.).</description>
+      </parameter>
+      <parameter name="original_payload" type="string" required="true">
+        <description>The payload that was blocked.</description>
+      </parameter>
+      <parameter name="bypass_payload" type="string" required="true">
+        <description>The payload that bypassed the WAF.</description>
+      </parameter>
+      <parameter name="target_url" type="string" required="true">
+        <description>URL where the bypass was tested.</description>
+      </parameter>
+      <parameter name="bypass_technique" type="string" required="true">
+        <description>Name/description of the bypass technique.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
+      </parameter>
+    </parameters>
+  </tool>
+
+  <tool name="get_waf_bypass_history">
+    <description>
+      Retrieve known WAF bypass techniques from the knowledge graph.
+      Use this BEFORE attempting WAF evasion to leverage past successful bypasses.
+    </description>
+    <parameters>
+      <parameter name="waf_type" type="string" required="false">
+        <description>Filter by WAF vendor.</description>
+      </parameter>
+      <parameter name="target_scope" type="string" required="false">
+        <description>The project scope.</description>
       </parameter>
     </parameters>
   </tool>

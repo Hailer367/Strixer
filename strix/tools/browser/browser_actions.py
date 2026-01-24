@@ -1,4 +1,15 @@
-from typing import TYPE_CHECKING, Any, Literal, NoReturn
+"""
+Advanced Browser Actions for Security Testing.
+
+This module provides comprehensive browser automation capabilities:
+- Standard navigation and interaction
+- Advanced traffic interception and analysis
+- Session management and cookie manipulation
+- JavaScript execution and debugging
+- Security-focused DOM analysis
+"""
+
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Dict, List
 
 from strix.tools.registry import register_tool
 
@@ -29,6 +40,19 @@ BrowserAction = Literal[
     "view_source",
     "close",
     "list_tabs",
+    # Advanced security actions
+    "get_cookies",
+    "set_cookie",
+    "delete_cookies",
+    "get_storage",
+    "clear_storage",
+    "intercept_requests",
+    "get_network_logs",
+    "analyze_dom",
+    "find_forms",
+    "extract_links",
+    "check_headers",
+    "screenshot_element",
 ]
 
 
@@ -180,6 +204,58 @@ def _handle_utility_actions(
     raise ValueError(f"Unknown utility action: {action}")
 
 
+def _handle_security_actions(
+    manager: "BrowserTabManager",
+    action: str,
+    tab_id: str | None = None,
+    cookie_data: dict | None = None,
+    storage_type: str | None = None,
+    selector: str | None = None,
+) -> dict[str, Any]:
+    """Handle advanced security-focused browser actions."""
+    
+    if action == "get_cookies":
+        return manager.get_cookies(tab_id)
+    
+    if action == "set_cookie":
+        if not cookie_data:
+            raise ValueError("cookie_data parameter is required for set_cookie action")
+        return manager.set_cookie(cookie_data, tab_id)
+    
+    if action == "delete_cookies":
+        return manager.delete_cookies(tab_id)
+    
+    if action == "get_storage":
+        storage = storage_type or "local"
+        return manager.get_storage(storage, tab_id)
+    
+    if action == "clear_storage":
+        storage = storage_type or "all"
+        return manager.clear_storage(storage, tab_id)
+    
+    if action == "get_network_logs":
+        return manager.get_network_logs(tab_id)
+    
+    if action == "analyze_dom":
+        return manager.analyze_dom(tab_id)
+    
+    if action == "find_forms":
+        return manager.find_forms(tab_id)
+    
+    if action == "extract_links":
+        return manager.extract_links(tab_id)
+    
+    if action == "check_headers":
+        return manager.check_headers(tab_id)
+    
+    if action == "screenshot_element":
+        if not selector:
+            raise ValueError("selector parameter is required for screenshot_element action")
+        return manager.screenshot_element(selector, tab_id)
+    
+    raise ValueError(f"Unknown security action: {action}")
+
+
 @register_tool
 def browser_action(
     action: BrowserAction,
@@ -192,7 +268,42 @@ def browser_action(
     key: str | None = None,
     file_path: str | None = None,
     clear: bool = False,
+    cookie_data: dict | None = None,
+    storage_type: str | None = None,
+    selector: str | None = None,
 ) -> dict[str, Any]:
+    """
+    Execute browser actions for security testing and automation.
+    
+    Standard Actions:
+    - launch: Launch browser with optional URL
+    - goto: Navigate to URL
+    - click/double_click/hover: Mouse interactions at coordinate
+    - type: Type text input
+    - scroll_down/scroll_up: Page scrolling
+    - back/forward: Navigation history
+    - new_tab/switch_tab/close_tab/list_tabs: Tab management
+    - wait: Wait for specified duration
+    - execute_js: Execute JavaScript code
+    - press_key: Press keyboard key
+    - save_pdf: Save page as PDF
+    - get_console_logs: Get browser console output
+    - view_source: Get page HTML source
+    - close: Close browser
+    
+    Security Actions:
+    - get_cookies: Get all cookies for current domain
+    - set_cookie: Set a cookie with specified data
+    - delete_cookies: Delete all cookies
+    - get_storage: Get localStorage/sessionStorage
+    - clear_storage: Clear storage data
+    - get_network_logs: Get captured network requests
+    - analyze_dom: Security analysis of DOM structure
+    - find_forms: Find and analyze forms for testing
+    - extract_links: Extract all links from page
+    - check_headers: Analyze security headers
+    - screenshot_element: Screenshot specific element
+    """
     from .tab_manager import get_browser_tab_manager
 
     manager = get_browser_tab_manager()
@@ -217,6 +328,20 @@ def browser_action(
             "view_source",
             "close",
         }
+        security_actions = {
+            "get_cookies",
+            "set_cookie",
+            "delete_cookies",
+            "get_storage",
+            "clear_storage",
+            "intercept_requests",
+            "get_network_logs",
+            "analyze_dom",
+            "find_forms",
+            "extract_links",
+            "check_headers",
+            "screenshot_element",
+        }
 
         if action in navigation_actions:
             return _handle_navigation_actions(manager, action, url, tab_id)
@@ -228,6 +353,10 @@ def browser_action(
             return _handle_utility_actions(
                 manager, action, duration, js_code, file_path, tab_id, clear
             )
+        if action in security_actions:
+            return _handle_security_actions(
+                manager, action, tab_id, cookie_data, storage_type, selector
+            )
 
         _raise_unknown_action(action)
 
@@ -237,4 +366,125 @@ def browser_action(
             "tab_id": tab_id,
             "screenshot": "",
             "is_running": False,
+        }
+
+
+@register_tool
+def browser_security_scan(
+    url: str,
+    scan_type: Literal["quick", "comprehensive", "passive"] = "quick",
+) -> dict[str, Any]:
+    """
+    Perform automated security scanning of a web page.
+    
+    Scan Types:
+    - quick: Fast scan for common issues (forms, links, basic headers)
+    - comprehensive: Full scan including DOM analysis, storage, cookies
+    - passive: Non-intrusive observation of page behavior
+    
+    Returns a structured security report with findings.
+    """
+    from .tab_manager import get_browser_tab_manager
+    
+    manager = get_browser_tab_manager()
+    
+    try:
+        # Launch browser if not already running
+        try:
+            result = manager.launch_browser(url)
+        except ValueError:
+            # Browser already launched, just navigate
+            result = manager.goto_url(url)
+        
+        findings = {
+            "url": url,
+            "scan_type": scan_type,
+            "findings": [],
+            "forms": [],
+            "links": [],
+            "cookies": [],
+            "headers": {},
+            "storage": {},
+            "risk_score": 0.0,
+        }
+        
+        # Quick scan - always run
+        forms_result = manager.find_forms()
+        findings["forms"] = forms_result.get("forms", [])
+        
+        links_result = manager.extract_links()
+        findings["links"] = links_result.get("links", [])
+        
+        headers_result = manager.check_headers()
+        findings["headers"] = headers_result.get("headers", {})
+        findings["findings"].extend(headers_result.get("issues", []))
+        
+        if scan_type in ("comprehensive", "passive"):
+            # Get cookies
+            cookies_result = manager.get_cookies()
+            findings["cookies"] = cookies_result.get("cookies", [])
+            
+            # Analyze cookie security
+            for cookie in findings["cookies"]:
+                if not cookie.get("httpOnly"):
+                    findings["findings"].append({
+                        "severity": "medium",
+                        "type": "cookie_security",
+                        "message": f"Cookie '{cookie.get('name')}' missing HttpOnly flag",
+                    })
+                if not cookie.get("secure") and "https" in url.lower():
+                    findings["findings"].append({
+                        "severity": "medium",
+                        "type": "cookie_security",
+                        "message": f"Cookie '{cookie.get('name')}' missing Secure flag on HTTPS",
+                    })
+        
+        if scan_type == "comprehensive":
+            # Get storage data
+            local_storage = manager.get_storage("local")
+            session_storage = manager.get_storage("session")
+            findings["storage"] = {
+                "localStorage": local_storage.get("data", {}),
+                "sessionStorage": session_storage.get("data", {}),
+            }
+            
+            # DOM analysis
+            dom_result = manager.analyze_dom()
+            findings["findings"].extend(dom_result.get("issues", []))
+            
+            # Analyze forms for potential vulnerabilities
+            for form in findings["forms"]:
+                if form.get("method", "").upper() == "GET" and any(
+                    f.get("type") == "password" for f in form.get("fields", [])
+                ):
+                    findings["findings"].append({
+                        "severity": "high",
+                        "type": "form_security",
+                        "message": f"Password field in GET form at {form.get('action', 'unknown')}",
+                    })
+                if not form.get("action", "").startswith("https"):
+                    findings["findings"].append({
+                        "severity": "medium",
+                        "type": "form_security",
+                        "message": f"Form submits to non-HTTPS endpoint: {form.get('action', 'unknown')}",
+                    })
+        
+        # Calculate risk score
+        severity_weights = {"critical": 1.0, "high": 0.7, "medium": 0.4, "low": 0.2, "info": 0.05}
+        total_risk = sum(
+            severity_weights.get(f.get("severity", "info"), 0.1)
+            for f in findings["findings"]
+        )
+        findings["risk_score"] = min(1.0, total_risk / 5.0)  # Normalize to 0-1
+        
+        findings["screenshot"] = result.get("screenshot", "")
+        
+        return findings
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "url": url,
+            "scan_type": scan_type,
+            "findings": [],
         }

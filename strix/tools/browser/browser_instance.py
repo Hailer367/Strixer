@@ -531,3 +531,418 @@ class BrowserInstance:
 
     def is_alive(self) -> bool:
         return self.is_running and self.browser is not None and self.browser.is_connected()
+
+    # Advanced Security Methods
+    
+    def get_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._get_cookies(tab_id))
+    
+    async def _get_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not self.context:
+            raise ValueError("Browser not launched")
+        
+        cookies = await self.context.cookies()
+        state = await self._get_page_state(tab_id)
+        state["cookies"] = [
+            {
+                "name": c.get("name"),
+                "value": c.get("value", "")[:100] + ("..." if len(c.get("value", "")) > 100 else ""),
+                "domain": c.get("domain"),
+                "path": c.get("path"),
+                "expires": c.get("expires"),
+                "httpOnly": c.get("httpOnly"),
+                "secure": c.get("secure"),
+                "sameSite": c.get("sameSite"),
+            }
+            for c in cookies
+        ]
+        return state
+    
+    def set_cookie(self, cookie_data: dict, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._set_cookie(cookie_data, tab_id))
+    
+    async def _set_cookie(self, cookie_data: dict, tab_id: str | None = None) -> dict[str, Any]:
+        if not self.context:
+            raise ValueError("Browser not launched")
+        
+        await self.context.add_cookies([cookie_data])
+        return await self._get_page_state(tab_id)
+    
+    def delete_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._delete_cookies(tab_id))
+    
+    async def _delete_cookies(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not self.context:
+            raise ValueError("Browser not launched")
+        
+        await self.context.clear_cookies()
+        return await self._get_page_state(tab_id)
+    
+    def get_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._get_storage(storage_type, tab_id))
+    
+    async def _get_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        storage_key = "localStorage" if storage_type == "local" else "sessionStorage"
+        
+        try:
+            data = await page.evaluate(f"""
+                () => {{
+                    const storage = window.{storage_key};
+                    const result = {{}};
+                    for (let i = 0; i < storage.length; i++) {{
+                        const key = storage.key(i);
+                        result[key] = storage.getItem(key);
+                    }}
+                    return result;
+                }}
+            """)
+        except Exception:
+            data = {}
+        
+        state = await self._get_page_state(tab_id)
+        state["data"] = data
+        state["storage_type"] = storage_type
+        return state
+    
+    def clear_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._clear_storage(storage_type, tab_id))
+    
+    async def _clear_storage(self, storage_type: str, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        if storage_type in ("local", "all"):
+            await page.evaluate("() => localStorage.clear()")
+        if storage_type in ("session", "all"):
+            await page.evaluate("() => sessionStorage.clear()")
+        
+        return await self._get_page_state(tab_id)
+    
+    def get_network_logs(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._get_network_logs(tab_id))
+    
+    async def _get_network_logs(self, tab_id: str | None = None) -> dict[str, Any]:
+        # Network logs would require request interception setup
+        # For now, return console logs that contain network info
+        state = await self._get_page_state(tab_id)
+        state["requests"] = []
+        state["note"] = "Network interception requires explicit setup with intercept_requests"
+        return state
+    
+    def analyze_dom(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._analyze_dom(tab_id))
+    
+    async def _analyze_dom(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        analysis = await page.evaluate("""
+            () => {
+                const issues = [];
+                
+                // Check for inline scripts
+                const inlineScripts = document.querySelectorAll('script:not([src])');
+                if (inlineScripts.length > 0) {
+                    issues.push({
+                        severity: 'info',
+                        type: 'inline_script',
+                        message: `Found ${inlineScripts.length} inline scripts (potential XSS vectors)`
+                    });
+                }
+                
+                // Check for onclick handlers
+                const onclickElements = document.querySelectorAll('[onclick]');
+                if (onclickElements.length > 0) {
+                    issues.push({
+                        severity: 'low',
+                        type: 'inline_handler',
+                        message: `Found ${onclickElements.length} elements with onclick handlers`
+                    });
+                }
+                
+                // Check for password fields
+                const passwordFields = document.querySelectorAll('input[type="password"]');
+                passwordFields.forEach((field, idx) => {
+                    if (!field.autocomplete || field.autocomplete === 'on') {
+                        issues.push({
+                            severity: 'low',
+                            type: 'password_autocomplete',
+                            message: `Password field #${idx + 1} has autocomplete enabled`
+                        });
+                    }
+                });
+                
+                // Check for iframes
+                const iframes = document.querySelectorAll('iframe');
+                iframes.forEach((iframe, idx) => {
+                    if (!iframe.sandbox) {
+                        issues.push({
+                            severity: 'medium',
+                            type: 'unsandboxed_iframe',
+                            message: `Iframe #${idx + 1} is not sandboxed: ${iframe.src || 'inline'}`
+                        });
+                    }
+                });
+                
+                // Check for external resources
+                const externalScripts = document.querySelectorAll('script[src]');
+                const externalStyles = document.querySelectorAll('link[rel="stylesheet"]');
+                
+                return {
+                    issues: issues,
+                    stats: {
+                        total_scripts: document.querySelectorAll('script').length,
+                        inline_scripts: inlineScripts.length,
+                        external_scripts: externalScripts.length,
+                        stylesheets: externalStyles.length,
+                        iframes: iframes.length,
+                        forms: document.querySelectorAll('form').length,
+                        inputs: document.querySelectorAll('input').length,
+                        links: document.querySelectorAll('a').length
+                    }
+                };
+            }
+        """)
+        
+        state = await self._get_page_state(tab_id)
+        state["analysis"] = analysis
+        state["issues"] = analysis.get("issues", [])
+        state["stats"] = analysis.get("stats", {})
+        return state
+    
+    def find_forms(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._find_forms(tab_id))
+    
+    async def _find_forms(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        forms = await page.evaluate("""
+            () => {
+                const forms = [];
+                document.querySelectorAll('form').forEach((form, idx) => {
+                    const fields = [];
+                    form.querySelectorAll('input, textarea, select').forEach(field => {
+                        fields.push({
+                            name: field.name || field.id || 'unnamed',
+                            type: field.type || field.tagName.toLowerCase(),
+                            id: field.id,
+                            required: field.required,
+                            placeholder: field.placeholder || ''
+                        });
+                    });
+                    
+                    forms.push({
+                        index: idx,
+                        action: form.action || window.location.href,
+                        method: form.method || 'GET',
+                        enctype: form.enctype || 'application/x-www-form-urlencoded',
+                        id: form.id,
+                        name: form.name,
+                        fields: fields,
+                        hasFileUpload: form.querySelector('input[type="file"]') !== null,
+                        hasPassword: form.querySelector('input[type="password"]') !== null,
+                        hasHidden: form.querySelectorAll('input[type="hidden"]').length > 0
+                    });
+                });
+                return forms;
+            }
+        """)
+        
+        state = await self._get_page_state(tab_id)
+        state["forms"] = forms
+        return state
+    
+    def extract_links(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._extract_links(tab_id))
+    
+    async def _extract_links(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        links = await page.evaluate("""
+            () => {
+                const links = [];
+                const baseUrl = window.location.origin;
+                
+                document.querySelectorAll('a[href]').forEach(link => {
+                    const href = link.href;
+                    const isExternal = href && !href.startsWith(baseUrl) && 
+                                      !href.startsWith('/') && !href.startsWith('#');
+                    
+                    links.push({
+                        href: href,
+                        text: (link.textContent || '').trim().substring(0, 100),
+                        target: link.target || '_self',
+                        rel: link.rel || '',
+                        isExternal: isExternal,
+                        hasNoopener: link.rel.includes('noopener'),
+                        hasNoreferrer: link.rel.includes('noreferrer')
+                    });
+                });
+                
+                return links.slice(0, 500); // Limit to 500 links
+            }
+        """)
+        
+        state = await self._get_page_state(tab_id)
+        state["links"] = links
+        state["total_links"] = len(links)
+        return state
+    
+    def check_headers(self, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._check_headers(tab_id))
+    
+    async def _check_headers(self, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        # Get page URL and make a fetch request to analyze headers
+        url = page.url
+        
+        header_check = await page.evaluate("""
+            async (url) => {
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    const headers = {};
+                    response.headers.forEach((value, key) => {
+                        headers[key.toLowerCase()] = value;
+                    });
+                    return { headers: headers, status: response.status };
+                } catch (e) {
+                    return { headers: {}, status: 0, error: e.message };
+                }
+            }
+        """, url)
+        
+        headers = header_check.get("headers", {})
+        issues = []
+        
+        # Security header checks
+        security_headers = {
+            "strict-transport-security": {
+                "severity": "medium",
+                "message": "Missing Strict-Transport-Security header (HSTS)"
+            },
+            "x-content-type-options": {
+                "severity": "low",
+                "message": "Missing X-Content-Type-Options header"
+            },
+            "x-frame-options": {
+                "severity": "medium",
+                "message": "Missing X-Frame-Options header (clickjacking protection)"
+            },
+            "content-security-policy": {
+                "severity": "medium",
+                "message": "Missing Content-Security-Policy header"
+            },
+            "x-xss-protection": {
+                "severity": "low",
+                "message": "Missing X-XSS-Protection header"
+            },
+            "referrer-policy": {
+                "severity": "low",
+                "message": "Missing Referrer-Policy header"
+            },
+            "permissions-policy": {
+                "severity": "low",
+                "message": "Missing Permissions-Policy header"
+            }
+        }
+        
+        for header, info in security_headers.items():
+            if header not in headers:
+                issues.append({
+                    "severity": info["severity"],
+                    "type": "missing_header",
+                    "header": header,
+                    "message": info["message"]
+                })
+        
+        # Check for information disclosure
+        disclosure_headers = ["server", "x-powered-by", "x-aspnet-version", "x-aspnetmvc-version"]
+        for header in disclosure_headers:
+            if header in headers:
+                issues.append({
+                    "severity": "info",
+                    "type": "information_disclosure",
+                    "header": header,
+                    "value": headers[header],
+                    "message": f"Server discloses {header}: {headers[header]}"
+                })
+        
+        state = await self._get_page_state(tab_id)
+        state["headers"] = headers
+        state["issues"] = issues
+        state["security_score"] = max(0, 100 - (len(issues) * 10))  # Simple score
+        return state
+    
+    def screenshot_element(self, selector: str, tab_id: str | None = None) -> dict[str, Any]:
+        with self._execution_lock:
+            return self._run_async(self._screenshot_element(selector, tab_id))
+    
+    async def _screenshot_element(self, selector: str, tab_id: str | None = None) -> dict[str, Any]:
+        if not tab_id:
+            tab_id = self.current_page_id
+        
+        if not tab_id or tab_id not in self.pages:
+            raise ValueError(f"Tab '{tab_id}' not found")
+        
+        page = self.pages[tab_id]
+        
+        try:
+            element = await page.query_selector(selector)
+            if not element:
+                raise ValueError(f"Element not found: {selector}")
+            
+            screenshot_bytes = await element.screenshot(type="png")
+            screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+        except Exception as e:
+            raise ValueError(f"Failed to screenshot element: {e}") from e
+        
+        state = await self._get_page_state(tab_id)
+        state["element_screenshot"] = screenshot_b64
+        state["selector"] = selector
+        return state

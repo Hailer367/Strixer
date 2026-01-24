@@ -123,6 +123,37 @@ RUN curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gi
     mv gitleaks /usr/local/bin/ && \
     rm gitleaks.tar.gz
 
+# Install Tor for anonymous networking and traffic routing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tor \
+    torsocks \
+    proxychains4 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure Tor for SOCKS proxy (default port 9050)
+RUN echo "SocksPort 9050" >> /etc/tor/torrc && \
+    echo "ControlPort 9051" >> /etc/tor/torrc && \
+    echo "CookieAuthentication 0" >> /etc/tor/torrc && \
+    echo "HashedControlPassword 16:872860B76453A77D60CA2BB8C1A7042072093276A3D701AD684053EC4C" >> /etc/tor/torrc
+
+# Configure proxychains to use Tor
+RUN sed -i 's/^socks4.*/socks5 127.0.0.1 9050/' /etc/proxychains4.conf 2>/dev/null || \
+    echo "socks5 127.0.0.1 9050" >> /etc/proxychains4.conf
+
+# Install Stowaway - Multi-hop proxy tool for pivoting
+# Stowaway is a Multi-hop proxy tool for penetration testers
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        STOWAWAY_ARCH="linux_x64"; \
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        STOWAWAY_ARCH="linux_arm64"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    curl -sSfL "https://github.com/ph4ntonn/Stowaway/releases/download/2.2/stowaway_admin_${STOWAWAY_ARCH}" -o /usr/local/bin/stowaway_admin && \
+    curl -sSfL "https://github.com/ph4ntonn/Stowaway/releases/download/2.2/stowaway_agent_${STOWAWAY_ARCH}" -o /usr/local/bin/stowaway_agent && \
+    chmod +x /usr/local/bin/stowaway_admin /usr/local/bin/stowaway_agent
+
 USER pentester
 
 RUN pipx install semgrep && \

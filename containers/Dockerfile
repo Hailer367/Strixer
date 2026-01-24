@@ -35,6 +35,7 @@ RUN apt-get update && \
     iproute2 iputils-ping netcat-traditional \
     nmap ncat ndiff \
     sqlmap nuclei subfinder naabu ffuf whatweb theharvester feroxbuster python3-requests \
+    metasploit-framework \
     nodejs npm pipx \
     libcap2-bin \
     gdb \

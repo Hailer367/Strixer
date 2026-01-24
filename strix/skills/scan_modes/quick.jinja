@@ -37,27 +37,21 @@ Skip lower-priority items:
 - Information disclosure that doesn't lead to exploitation
 - Theoretical vulnerabilities without PoC
 
-PHASE 4: VALIDATION AND REPORTING
-- Validate only critical/high severity findings with minimal PoC
-- Report findings as you discover them - don't wait for completion
-- Focus on exploitability and business impact
+PHASE 4: RAPID VALIDATION AND REPORTING
+- Validate critical/high severity findings with minimal but definitive PoC.
+- Report findings ONLY as they are discovered and CONFIRMED.
+- Focus on exploitability and proven impact. Tool noise is your enemy.
 
-QUICK CHAINING RULE:
-- If you find ANY strong primitive (auth weakness, access control gap, injection point, internal reachability), immediately attempt a single high-impact pivot to demonstrate real impact
-- Do not stop at a low-context “maybe”; turn it into a concrete exploit sequence (even if short) that reaches privileged action or sensitive data
-
-OPERATIONAL GUIDELINES:
-- Use the browser tool for quick manual testing of critical flows
-- Use terminal for targeted scans with fast presets (e.g., nuclei with critical/high templates only)
-- Use proxy to inspect traffic on key endpoints
-- Skip extensive fuzzing - use targeted payloads only
-- Create subagents only for parallel high-priority tasks
-- If whitebox: file_edit tool to review specific suspicious code sections
-- Use notes tool to track critical findings only
+TRUE VALIDATED VULNERABILITY MANDATE:
+- Your absolute priority is discovering TRUE VALIDATED VULNERABILITIES.
+- Even in quick mode, unvalidated findings are NOT considered successful objectives.
+- If a tool finds something, validate it quickly or it's just noise.
+- If the tool already provides proof (e.g., successful injection), confirm the evidence and prioritize.
+- A "successful" quick scan means finding one or two TRUE VULNERABILITIES that actually matter.
 
 MINDSET:
-- Think like a time-boxed bug bounty hunter going for quick wins
-- Prioritize breadth over depth on critical areas
-- If something looks exploitable, validate quickly and move on
-- Don't get stuck - if an attack vector isn't yielding results quickly, pivot
+- Think like a time-boxed bug bounty hunter going for quick wins that are PROVEN.
+- Prioritize breadth over depth on critical areas, but VALIDATE everything you find.
+- If something looks exploitable, validate quickly and move on. NO THEORETICAL REPORTS.
+- Don't get stuck – if an approach doesn't lead to a TRUE VULNERABILITY, pivot.
 </scan_mode>

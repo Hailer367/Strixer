@@ -194,7 +194,8 @@ def update_state(updates: dict[str, Any]) -> None:
             _state.tool_executions = [ToolExecution(**t) if isinstance(t, dict) else t for t in updates["tool_executions"]]
         
         if "live_feed" in updates:
-            _state.live_feed = updates["live_feed"][-100:]  # Keep last 100
+            # Keep only last 65 events to prevent lag when dashboard has 100+ events
+            _state.live_feed = updates["live_feed"][-65:]
         
         # Write to file
         _write_state_file()
@@ -248,9 +249,9 @@ def add_live_feed_entry(entry_type: str, message: str, **kwargs) -> None:
             **kwargs,
         }
         _state.live_feed.append(entry)
-        # Keep only last 100 entries
-        if len(_state.live_feed) > 100:
-            _state.live_feed = _state.live_feed[-100:]
+        # Keep only last 65 entries to prevent performance issues at 100+ events
+        if len(_state.live_feed) > 65:
+            _state.live_feed = _state.live_feed[-65:]
         _write_state_file()
 
 

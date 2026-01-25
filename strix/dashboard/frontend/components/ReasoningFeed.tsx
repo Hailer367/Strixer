@@ -6,6 +6,11 @@ interface Props {
   logs: ReasoningLog[];
 }
 
+// Collapsed height thresholds
+const INPUT_COLLAPSED_HEIGHT = 96; // 24 * 4 = 96px (max-h-24)
+const OUTPUT_COLLAPSED_HEIGHT = 192; // 48 * 4 = 192px (max-h-48)
+const OUTPUT_COLLAPSED_HEIGHT_SM = 256; // 64 * 4 = 256px (max-h-64 on sm+)
+
 // Expandable content component for tool input/output
 const ExpandableContent: React.FC<{
   content: string;
@@ -27,38 +32,42 @@ const ExpandableContent: React.FC<{
       const fullHeight = element.scrollHeight;
       element.style.maxHeight = originalMaxHeight;
       
-      // Compare with collapsed height threshold (192px for max-h-48)
-      const collapsedThreshold = 192;
+      // Compare with collapsed height threshold based on type
+      const collapsedThreshold = type === 'input' ? INPUT_COLLAPSED_HEIGHT : OUTPUT_COLLAPSED_HEIGHT;
       setIsOverflowing(fullHeight > collapsedThreshold);
       setContentHeight(fullHeight);
     }
-  }, [content]);
+  }, [content, type]);
 
   if (type === 'input') {
     return (
-      <div className="flex gap-2 sm:gap-3 mb-2 sm:mb-3">
+      <div className="flex gap-2 sm:gap-3 mb-2 sm:mb-3 relative">
         <span className="text-emerald-400 flex-shrink-0">$</span>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div 
             ref={contentRef}
-            className={`text-slate-100 break-all transition-all duration-300 ease-in-out ${
-              !isExpanded ? 'max-h-24 overflow-hidden' : ''
+            className={`text-slate-100 break-all whitespace-pre-wrap transition-all duration-300 ease-in-out ${
+              !isExpanded ? 'max-h-24 overflow-hidden' : 'overflow-y-auto custom-scrollbar'
             }`}
-            style={isExpanded && contentHeight ? { maxHeight: `${contentHeight}px` } : undefined}
+            style={isExpanded ? { maxHeight: Math.min(contentHeight || 500, window.innerHeight * 0.6) } : undefined}
           >
             {content}
           </div>
+          {/* Gradient overlay for collapsed state */}
+          {isOverflowing && !isExpanded && (
+            <div className="absolute bottom-8 left-6 right-0 h-6 bg-gradient-to-t from-[#030712] to-transparent pointer-events-none" />
+          )}
           {isOverflowing && (
             <button
-              onClick={onToggle}
-              className="mt-2 flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group"
+              onClick={(e) => { e.stopPropagation(); onToggle(); }}
+              className="mt-2 flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group relative z-10"
             >
               <span className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
                 <ICONS.ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </span>
               {isExpanded ? 'Collapse Input' : 'Expand Input'}
               <span className="text-slate-600 font-normal lowercase">
-                ({content.length} chars)
+                ({content.length.toLocaleString()} chars)
               </span>
             </button>
           )}
@@ -67,28 +76,35 @@ const ExpandableContent: React.FC<{
     );
   }
 
+  // Output type
   return (
-    <div className="relative">
+    <div className="relative isolate">
       <div 
         ref={contentRef}
-        className={`text-slate-400 whitespace-pre-wrap break-all opacity-90 border-l border-white/5 pl-3 sm:pl-4 ml-1 overflow-y-auto custom-scrollbar transition-all duration-300 ease-in-out ${
-          !isExpanded ? 'max-h-48 sm:max-h-64' : 'max-h-[80vh]'
+        className={`text-slate-400 whitespace-pre-wrap break-all opacity-90 border-l border-white/5 pl-3 sm:pl-4 ml-1 custom-scrollbar transition-all duration-300 ease-in-out ${
+          !isExpanded ? 'max-h-48 sm:max-h-64 overflow-hidden' : 'overflow-y-auto'
         }`}
+        style={isExpanded ? { maxHeight: Math.min(contentHeight || 800, window.innerHeight * 0.7) } : undefined}
       >
         {content}
       </div>
+      {/* Gradient overlay and expand button - positioned to not overlap other content */}
       {isOverflowing && (
-        <div className={`${!isExpanded ? 'absolute bottom-0 left-0 right-0 pt-8 bg-gradient-to-t from-[#030712] to-transparent' : 'mt-2'}`}>
+        <div className={`relative z-10 ${
+          !isExpanded 
+            ? 'mt-0 pt-6 -mt-6 bg-gradient-to-t from-[#030712] via-[#030712]/90 to-transparent' 
+            : 'mt-2'
+        }`}>
           <button
-            onClick={onToggle}
-            className={`flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group ${!isExpanded ? 'ml-4' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className="flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group ml-4"
           >
             <span className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
               <ICONS.ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             </span>
             {isExpanded ? 'Collapse Output' : 'Expand Output'}
             <span className="text-slate-600 font-normal lowercase">
-              ({content.length} chars)
+              ({content.length.toLocaleString()} chars)
             </span>
           </button>
         </div>
@@ -108,10 +124,16 @@ const LogEntry: React.FC<{
   const [inputExpanded, setInputExpanded] = useState(false);
   const [outputExpanded, setOutputExpanded] = useState(false);
 
+  // Reset expansion states when log changes (for recycled components)
+  useEffect(() => {
+    setInputExpanded(false);
+    setOutputExpanded(false);
+  }, [log.id]);
+
   return (
     <div 
       key={log.id || `log-${index}`} 
-      className="flex flex-col gap-2 sm:gap-3 group animate-in fade-in slide-in-from-bottom-4 duration-500"
+      className="flex flex-col gap-2 sm:gap-3 group animate-in fade-in slide-in-from-bottom-4 duration-500 isolate"
       style={{ animationDelay: `${Math.min(index * 50, 500)}ms` }}
     >
       {/* Header & Thought */}
@@ -143,9 +165,9 @@ const LogEntry: React.FC<{
 
       {/* Terminal Block */}
       {(log.toolInput || log.toolOutput) && (
-        <div className={`ml-4 sm:ml-6 rounded-lg overflow-hidden border bg-[#030712] ${getSeverityGlow(log.severity)}`}>
+        <div className={`ml-4 sm:ml-6 rounded-lg border bg-[#030712] ${getSeverityGlow(log.severity)} relative isolate`}>
           {/* Terminal Header */}
-          <div className="bg-slate-900/80 px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/5">
+          <div className="bg-slate-900/80 px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/5 sticky top-0 z-20">
             <div className="flex gap-1.5">
               <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500/30" />
               <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500/30" />
@@ -162,28 +184,32 @@ const LogEntry: React.FC<{
             </div>
           </div>
 
-          {/* Terminal Body */}
-          <div className="p-3 sm:p-4 font-mono text-[10px] sm:text-[11px] leading-relaxed">
+          {/* Terminal Body - contains expandable content blocks */}
+          <div className="p-3 sm:p-4 font-mono text-[10px] sm:text-[11px] leading-relaxed space-y-3">
             {log.toolInput && (
-              <ExpandableContent 
-                content={log.toolInput}
-                type="input"
-                isExpanded={inputExpanded}
-                onToggle={() => setInputExpanded(!inputExpanded)}
-              />
+              <div className="relative">
+                <ExpandableContent 
+                  content={log.toolInput}
+                  type="input"
+                  isExpanded={inputExpanded}
+                  onToggle={() => setInputExpanded(!inputExpanded)}
+                />
+              </div>
             )}
             
             {log.toolOutput && (
-              <ExpandableContent 
-                content={log.toolOutput}
-                type="output"
-                isExpanded={outputExpanded}
-                onToggle={() => setOutputExpanded(!outputExpanded)}
-              />
+              <div className="relative">
+                <ExpandableContent 
+                  content={log.toolOutput}
+                  type="output"
+                  isExpanded={outputExpanded}
+                  onToggle={() => setOutputExpanded(!outputExpanded)}
+                />
+              </div>
             )}
 
             {log.action && (
-              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/5 flex flex-wrap items-center gap-2 relative z-10">
                 <span className="text-cyan-400 font-bold uppercase tracking-tighter text-[9px] sm:text-[10px]">[RESULT]</span>
                 <span className="text-slate-200 text-[10px] sm:text-[11px]">{log.action}</span>
               </div>
@@ -195,6 +221,9 @@ const LogEntry: React.FC<{
   );
 };
 
+// Maximum number of logs to render for performance
+const MAX_VISIBLE_LOGS = 65;
+
 const ReasoningFeed: React.FC<Props> = ({ logs }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -202,6 +231,15 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAutoScrollingRef = useRef(false);
   const lastLogCountRef = useRef(0);
+  
+  // Performance optimization: Only render the most recent logs to prevent lag
+  // When logs exceed MAX_VISIBLE_LOGS, older logs are trimmed from display
+  const visibleLogs = logs.length > MAX_VISIBLE_LOGS 
+    ? logs.slice(-MAX_VISIBLE_LOGS) 
+    : logs;
+  const trimmedCount = logs.length > MAX_VISIBLE_LOGS 
+    ? logs.length - MAX_VISIBLE_LOGS 
+    : 0;
 
   // Check if user is near bottom of the feed
   const checkIfNearBottom = useCallback(() => {
@@ -225,7 +263,7 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
   // Auto-scroll to bottom only if user is near bottom
   useEffect(() => {
     // Only auto-scroll if new logs were added and user is near bottom
-    if (logs.length > lastLogCountRef.current && isUserNearBottom && feedEndRef.current) {
+    if (visibleLogs.length > 0 && logs.length > lastLogCountRef.current && isUserNearBottom && feedEndRef.current) {
       isAutoScrollingRef.current = true;
       feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
       
@@ -235,7 +273,7 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
       }, 500);
     }
     lastLogCountRef.current = logs.length;
-  }, [logs, isUserNearBottom]);
+  }, [logs, visibleLogs.length, isUserNearBottom]);
 
   // Add scroll event listener
   useEffect(() => {
@@ -314,7 +352,17 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
         </div>
       )}
       
-      {logs.map((log, index) => (
+      {/* Show indicator when older logs have been trimmed for performance */}
+      {trimmedCount > 0 && (
+        <div className="text-center py-2 px-4 bg-slate-800/30 rounded-lg border border-slate-700/50 mb-4">
+          <p className="text-[9px] sm:text-[10px] text-slate-500 font-mono">
+            <span className="text-cyan-500">{trimmedCount}</span> older events hidden for performance
+            <span className="text-slate-600 ml-2">• Showing latest {MAX_VISIBLE_LOGS}</span>
+          </p>
+        </div>
+      )}
+      
+      {visibleLogs.map((log, index) => (
         <LogEntry
           key={log.id || `log-${index}`}
           log={log}
@@ -338,7 +386,7 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
             New Activity
           </span>
           <span className="text-[9px] sm:text-[10px] bg-slate-950/30 px-1.5 py-0.5 rounded">
-            {logs.length}
+            {visibleLogs.length}{trimmedCount > 0 ? `/${logs.length}` : ''}
           </span>
         </button>
       )}

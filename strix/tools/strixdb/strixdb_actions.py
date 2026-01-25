@@ -3,7 +3,81 @@ StrixDB Actions - Advanced GitHub-based Persistent Knowledge Repository.
 
 This module provides tools for the AI agent to interact with StrixDB,
 a sophisticated GitHub repository for storing, retrieving, and querying
-security artifacts with advanced features:
+security artifacts with advanced features.
+
+=============================================================================
+STRIXDB QUICK REFERENCE FOR AGENTS
+=============================================================================
+
+AVAILABLE TOOLS & WHEN TO USE THEM:
+-----------------------------------
+1. strixdb_save(category, name, content, ...)
+   - USE: To permanently save scripts, exploits, payloads, knowledge, etc.
+   - EXAMPLE: Save a working SQLi payload or custom Python exploit script
+
+2. strixdb_search(query, category=None, tags=None, ...)
+   - USE: Find existing items before creating new ones (ALWAYS search first!)
+   - EXAMPLE: Search "sql injection mysql" before writing a new SQLi script
+
+3. strixdb_get(category, name)
+   - USE: Retrieve a specific item you know exists
+   - EXAMPLE: Get the "jwt_none_algorithm" exploit from "exploits" category
+
+4. strixdb_list(category=None, ...)
+   - USE: Browse items in a category or see everything available
+   - EXAMPLE: List all items in "payloads" category
+
+5. strixdb_update(category, name, content, ...)
+   - USE: Update/improve an existing item
+   - EXAMPLE: Fix a bug in a saved script or add better documentation
+
+6. strixdb_delete(category, name)
+   - USE: Remove outdated or incorrect items (use carefully!)
+
+7. strixdb_get_categories()
+   - USE: See all available categories and their descriptions
+
+8. strixdb_create_category(category_name, description)
+   - USE: Create a new category for specialized content
+
+9. strixdb_batch_save(items)
+   - USE: Save multiple items at once efficiently
+
+10. strixdb_find_related(category, name)
+    - USE: Discover items related to a specific item
+
+11. strixdb_get_config_status()
+    - USE: Check if StrixDB is properly configured
+
+12. strixdb_get_stats()
+    - USE: Get statistics about StrixDB usage
+
+13. strixdb_export(category=None, format="json")
+    - USE: Export items for backup or sharing
+
+14. strixdb_clear_cache()
+    - USE: Force fresh data retrieval if cache seems stale
+
+DEFAULT CATEGORIES:
+------------------
+scripts, exploits, knowledge, libraries, sources, methods, tools, configs,
+wordlists, payloads, templates, notes, reports, workflows, credentials,
+endpoints, fingerprints, bypasses, recon, metadata
+
+CONTENT TYPES (for strixdb_save):
+--------------------------------
+"text" -> .md | "python"/"script" -> .py | "shell" -> .sh | "json" -> .json
+"yaml" -> .yml | "sql" -> .sql | "javascript" -> .js | "html" -> .html
+
+BEST PRACTICES:
+--------------
+1. ALWAYS search before saving to avoid duplicates
+2. Use descriptive names with underscores: "sqli_time_based_mysql"
+3. Add relevant tags for easier discovery later
+4. Write clear descriptions explaining what the item does
+5. Use appropriate content_type for syntax highlighting
+
+=============================================================================
 
 KEY FEATURES:
 - Intelligent full-text search with relevance scoring
@@ -377,7 +451,23 @@ def strixdb_create_category(
     category_name: str,
     description: str = "",
 ) -> dict[str, Any]:
-    """Create a new category in StrixDB."""
+    """
+    Create a new category (directory) in StrixDB for organizing artifacts.
+    
+    Args:
+        agent_state: The current agent state (automatically passed).
+        category_name: Name for the new category. Converted to lowercase with underscores.
+                      Examples: "custom_payloads", "waf_bypasses", "api_tests"
+        description: Human-readable description of what this category stores.
+                    Example: "Custom WAF bypass techniques for Cloudflare"
+    
+    Returns:
+        dict with keys: success (bool), message (str), category (str), 
+        description (str), error (str, only if failed)
+    
+    Example:
+        strixdb_create_category(state, "waf_bypasses", "Successful WAF bypass techniques")
+    """
     config = _get_strixdb_config()
 
     if not config["repo"] or not config["token"]:
@@ -425,13 +515,40 @@ def strixdb_save(
     detect_relations: bool = True,
 ) -> dict[str, Any]:
     """
-    Save an item to StrixDB with enhanced metadata and indexing.
+    Save an artifact to StrixDB with enhanced metadata, indexing, and versioning.
     
-    Features:
-    - Automatic keyword extraction for tags
-    - Content deduplication via hashing
-    - Automatic relationship detection
-    - Version tracking
+    This is your PRIMARY tool for persisting security knowledge. Save anything useful:
+    scripts, exploits, payloads, research notes, configurations, etc.
+    
+    Args:
+        agent_state: The current agent state (automatically passed).
+        category: Category to save under (e.g., "exploits", "payloads", "scripts", 
+                 "knowledge", "tools", "wordlists", "configs", "bypasses", "recon").
+        name: Unique descriptive name with underscores (e.g., "sqli_time_based_mysql").
+        content: The actual content - scripts, payloads, documentation, etc.
+        description: Brief description of what this does and when to use it.
+        tags: Manual tags like ["sqli", "mysql", "time-based"]. Auto-tagging adds more.
+        content_type: Determines file extension:
+                     "text" -> .md | "python"/"script" -> .py | "shell" -> .sh
+                     "json" -> .json | "yaml" -> .yml | "sql" -> .sql | "javascript" -> .js
+        auto_tag: If True, automatically extract keywords from content as tags.
+        detect_relations: If True, auto-detect and link related items (CVEs, IPs, domains).
+    
+    Returns:
+        dict with: success, message, item (id, name, category, path, tags, version, etc.)
+        Returns duplicate=True if identical content already exists.
+    
+    Examples:
+        # Save a Python exploit
+        strixdb_save(state, "exploits", "jwt_none_algo", 
+                    "import jwt\\ndef exploit(token): ...",
+                    description="JWT none algorithm bypass",
+                    tags=["jwt", "auth"], content_type="python")
+        
+        # Save a payload
+        strixdb_save(state, "payloads", "xss_cloudflare_bypass",
+                    "<img src=x onerror='alert(1)'>",
+                    tags=["xss", "waf", "cloudflare"])
     """
     config = _get_strixdb_config()
 
@@ -612,13 +729,34 @@ def strixdb_search(
     include_content: bool = False,
 ) -> dict[str, Any]:
     """
-    Advanced search for items in StrixDB with relevance scoring.
+    Search StrixDB for artifacts using full-text search with relevance scoring.
     
-    Features:
-    - Full-text search across name, description, and content
-    - Category and tag filtering
-    - Relevance scoring
-    - Optional content preview
+    ALWAYS search before saving to avoid duplicates! Use this to find existing
+    tools, exploits, payloads, and knowledge.
+    
+    Args:
+        agent_state: The current agent state (automatically passed).
+        query: Search query - terms, technology names, CVE IDs, vulnerability types.
+               Examples: "sqli bypass", "cloudflare", "CVE-2021-44228", "jwt"
+        category: Filter to specific category (e.g., "exploits", "payloads").
+        tags: Filter results that have ALL specified tags (e.g., ["sqli", "mysql"]).
+        limit: Maximum results to return (default 20, max 100).
+        include_content: If True, include content preview (first 500 chars).
+    
+    Returns:
+        dict with: success, query, total_count, results (list of items with 
+        name, category, path, relevance_score), filters_applied
+    
+    Examples:
+        # Search for SQL injection items
+        strixdb_search(state, "sql injection mysql", limit=10)
+        
+        # Search for WAF bypass payloads with content preview
+        strixdb_search(state, "waf bypass", category="payloads", 
+                      tags=["waf"], include_content=True)
+        
+        # Search for a specific CVE
+        strixdb_search(state, "CVE-2021-44228 log4j", category="exploits")
     """
     config = _get_strixdb_config()
 
@@ -730,12 +868,28 @@ def strixdb_get(
     use_cache: bool = True,
 ) -> dict[str, Any]:
     """
-    Retrieve a specific item from StrixDB with caching.
+    Retrieve a specific item from StrixDB by category and name.
     
-    Features:
-    - Local caching for performance
-    - Access tracking
-    - Metadata retrieval
+    Use when you know the exact item you want. For discovery, use strixdb_search.
+    
+    Args:
+        agent_state: The current agent state (automatically passed).
+        category: The category where item is stored (e.g., "exploits", "payloads").
+        name: The item name WITHOUT file extension (e.g., "jwt_none_algorithm").
+        use_cache: Use cached version if available (default True). Set False for fresh.
+    
+    Returns:
+        dict with: success, item (name, category, content, path, size, metadata)
+        metadata includes: id, description, tags, content_type, version, access_count, etc.
+    
+    Examples:
+        # Get a specific exploit
+        result = strixdb_get(state, "exploits", "jwt_none_algorithm")
+        if result["success"]:
+            exploit_code = result["item"]["content"]
+        
+        # Force fresh fetch (bypass cache)
+        result = strixdb_get(state, "payloads", "xss_bypass", use_cache=False)
     """
     config = _get_strixdb_config()
 

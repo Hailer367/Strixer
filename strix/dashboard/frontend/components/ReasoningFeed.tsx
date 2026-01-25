@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ReasoningLog } from '../types';
 import { ICONS } from '../constants';
 
@@ -6,12 +6,259 @@ interface Props {
   logs: ReasoningLog[];
 }
 
-const ReasoningFeed: React.FC<Props> = ({ logs }) => {
-  const feedEndRef = useRef<HTMLDivElement>(null);
+// Expandable content component for tool input/output
+const ExpandableContent: React.FC<{
+  content: string;
+  type: 'input' | 'output';
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ content, type, isExpanded, onToggle }) => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
 
+  // Check if content overflows the collapsed height
   useEffect(() => {
-    feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    if (contentRef.current) {
+      const element = contentRef.current;
+      // Temporarily remove max-height to measure full content
+      const originalMaxHeight = element.style.maxHeight;
+      element.style.maxHeight = 'none';
+      const fullHeight = element.scrollHeight;
+      element.style.maxHeight = originalMaxHeight;
+      
+      // Compare with collapsed height threshold (192px for max-h-48)
+      const collapsedThreshold = 192;
+      setIsOverflowing(fullHeight > collapsedThreshold);
+      setContentHeight(fullHeight);
+    }
+  }, [content]);
+
+  if (type === 'input') {
+    return (
+      <div className="flex gap-2 sm:gap-3 mb-2 sm:mb-3">
+        <span className="text-emerald-400 flex-shrink-0">$</span>
+        <div className="flex-1 min-w-0">
+          <div 
+            ref={contentRef}
+            className={`text-slate-100 break-all transition-all duration-300 ease-in-out ${
+              !isExpanded ? 'max-h-24 overflow-hidden' : ''
+            }`}
+            style={isExpanded && contentHeight ? { maxHeight: `${contentHeight}px` } : undefined}
+          >
+            {content}
+          </div>
+          {isOverflowing && (
+            <button
+              onClick={onToggle}
+              className="mt-2 flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group"
+            >
+              <span className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                <ICONS.ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </span>
+              {isExpanded ? 'Collapse Input' : 'Expand Input'}
+              <span className="text-slate-600 font-normal lowercase">
+                ({content.length} chars)
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div 
+        ref={contentRef}
+        className={`text-slate-400 whitespace-pre-wrap break-all opacity-90 border-l border-white/5 pl-3 sm:pl-4 ml-1 overflow-y-auto custom-scrollbar transition-all duration-300 ease-in-out ${
+          !isExpanded ? 'max-h-48 sm:max-h-64' : 'max-h-[80vh]'
+        }`}
+      >
+        {content}
+      </div>
+      {isOverflowing && (
+        <div className={`${!isExpanded ? 'absolute bottom-0 left-0 right-0 pt-8 bg-gradient-to-t from-[#030712] to-transparent' : 'mt-2'}`}>
+          <button
+            onClick={onToggle}
+            className={`flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 transition-colors text-[9px] sm:text-[10px] font-bold uppercase tracking-wider group ${!isExpanded ? 'ml-4' : ''}`}
+          >
+            <span className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <ICONS.ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            </span>
+            {isExpanded ? 'Collapse Output' : 'Expand Output'}
+            <span className="text-slate-600 font-normal lowercase">
+              ({content.length} chars)
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Individual log entry component with expand/collapse state
+const LogEntry: React.FC<{
+  log: ReasoningLog;
+  index: number;
+  getSeverityGlow: (severity?: string) => string;
+  getSeverityDotColor: (severity?: string) => string;
+  getSeverityBadgeStyle: (severity?: string) => string;
+}> = ({ log, index, getSeverityGlow, getSeverityDotColor, getSeverityBadgeStyle }) => {
+  const [inputExpanded, setInputExpanded] = useState(false);
+  const [outputExpanded, setOutputExpanded] = useState(false);
+
+  return (
+    <div 
+      key={log.id || `log-${index}`} 
+      className="flex flex-col gap-2 sm:gap-3 group animate-in fade-in slide-in-from-bottom-4 duration-500"
+      style={{ animationDelay: `${Math.min(index * 50, 500)}ms` }}
+    >
+      {/* Header & Thought */}
+      <div className="flex gap-2 sm:gap-4 items-start">
+        <div className="flex-shrink-0 mt-1.5">
+          <div className={`w-2 h-2 rounded-full ${getSeverityDotColor(log.severity)}`} />
+        </div>
+        <div className="flex-1 space-y-1.5 sm:space-y-2 min-w-0">
+          {/* Header row */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="text-[9px] sm:text-[10px] font-mono text-slate-500">[{log.timestamp}]</span>
+            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-cyan-500/80">
+              REASONING_ENGINE
+            </span>
+            <span className="hidden sm:block h-[1px] flex-1 bg-slate-800/50" />
+            <span className={`text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${getSeverityBadgeStyle(log.severity)}`}>
+              {log.severity || 'info'}
+            </span>
+          </div>
+          
+          {/* Thought content */}
+          {log.thought && (
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed italic border-l-2 border-slate-700 pl-3 sm:pl-4 py-1 bg-slate-900/30 rounded-r-lg">
+              {log.thought}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Terminal Block */}
+      {(log.toolInput || log.toolOutput) && (
+        <div className={`ml-4 sm:ml-6 rounded-lg overflow-hidden border bg-[#030712] ${getSeverityGlow(log.severity)}`}>
+          {/* Terminal Header */}
+          <div className="bg-slate-900/80 px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/5">
+            <div className="flex gap-1.5">
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500/30" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500/30" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500/30" />
+            </div>
+            <div className="text-[8px] sm:text-[10px] font-mono text-slate-500 flex items-center gap-1.5 sm:gap-2 truncate ml-2">
+              <span className="text-emerald-400/60 uppercase truncate max-w-[80px] sm:max-w-none">
+                {log.tool || 'terminal'}
+              </span>
+              <span className="hidden sm:inline">—</span>
+              <span className="hidden sm:inline text-slate-600">
+                session_id: {log.id?.split('-')[1] || '0'}
+              </span>
+            </div>
+          </div>
+
+          {/* Terminal Body */}
+          <div className="p-3 sm:p-4 font-mono text-[10px] sm:text-[11px] leading-relaxed">
+            {log.toolInput && (
+              <ExpandableContent 
+                content={log.toolInput}
+                type="input"
+                isExpanded={inputExpanded}
+                onToggle={() => setInputExpanded(!inputExpanded)}
+              />
+            )}
+            
+            {log.toolOutput && (
+              <ExpandableContent 
+                content={log.toolOutput}
+                type="output"
+                isExpanded={outputExpanded}
+                onToggle={() => setOutputExpanded(!outputExpanded)}
+              />
+            )}
+
+            {log.action && (
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
+                <span className="text-cyan-400 font-bold uppercase tracking-tighter text-[9px] sm:text-[10px]">[RESULT]</span>
+                <span className="text-slate-200 text-[10px] sm:text-[11px]">{log.action}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ReasoningFeed: React.FC<Props> = ({ logs }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const feedEndRef = useRef<HTMLDivElement>(null);
+  const [isUserNearBottom, setIsUserNearBottom] = useState(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const isAutoScrollingRef = useRef(false);
+  const lastLogCountRef = useRef(0);
+
+  // Check if user is near bottom of the feed
+  const checkIfNearBottom = useCallback(() => {
+    if (!containerRef.current) return true;
+    const container = containerRef.current;
+    const threshold = 150; // pixels from bottom to consider "near bottom"
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceFromBottom <= threshold;
+  }, []);
+
+  // Handle scroll events to track user position
+  const handleScroll = useCallback(() => {
+    // Ignore scroll events triggered by auto-scroll
+    if (isAutoScrollingRef.current) return;
+    
+    const nearBottom = checkIfNearBottom();
+    setIsUserNearBottom(nearBottom);
+    setShowScrollToBottom(!nearBottom && logs.length > 0);
+  }, [checkIfNearBottom, logs.length]);
+
+  // Auto-scroll to bottom only if user is near bottom
+  useEffect(() => {
+    // Only auto-scroll if new logs were added and user is near bottom
+    if (logs.length > lastLogCountRef.current && isUserNearBottom && feedEndRef.current) {
+      isAutoScrollingRef.current = true;
+      feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      
+      // Reset auto-scrolling flag after animation completes
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 500);
+    }
+    lastLogCountRef.current = logs.length;
+  }, [logs, isUserNearBottom]);
+
+  // Add scroll event listener
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  // Scroll to bottom button handler
+  const scrollToBottom = useCallback(() => {
+    if (feedEndRef.current) {
+      isAutoScrollingRef.current = true;
+      feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setIsUserNearBottom(true);
+      setShowScrollToBottom(false);
+      
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 500);
+    }
+  }, []);
 
   const getSeverityGlow = (severity?: string) => {
     switch (severity) {
@@ -44,7 +291,10 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 scroll-smooth custom-scrollbar">
+    <div 
+      ref={containerRef}
+      className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 scroll-smooth custom-scrollbar relative"
+    >
       {logs.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4 py-20">
           <div className="relative">
@@ -65,87 +315,33 @@ const ReasoningFeed: React.FC<Props> = ({ logs }) => {
       )}
       
       {logs.map((log, index) => (
-        <div 
-          key={log.id || `log-${index}`} 
-          className="flex flex-col gap-2 sm:gap-3 group animate-in fade-in slide-in-from-bottom-4 duration-500"
-          style={{ animationDelay: `${index * 50}ms` }}
-        >
-          {/* Header & Thought */}
-          <div className="flex gap-2 sm:gap-4 items-start">
-            <div className="flex-shrink-0 mt-1.5">
-              <div className={`w-2 h-2 rounded-full ${getSeverityDotColor(log.severity)}`} />
-            </div>
-            <div className="flex-1 space-y-1.5 sm:space-y-2 min-w-0">
-              {/* Header row */}
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <span className="text-[9px] sm:text-[10px] font-mono text-slate-500">[{log.timestamp}]</span>
-                <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-cyan-500/80">
-                  REASONING_ENGINE
-                </span>
-                <span className="hidden sm:block h-[1px] flex-1 bg-slate-800/50" />
-                <span className={`text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${getSeverityBadgeStyle(log.severity)}`}>
-                  {log.severity || 'info'}
-                </span>
-              </div>
-              
-              {/* Thought content */}
-              {log.thought && (
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed italic border-l-2 border-slate-700 pl-3 sm:pl-4 py-1 bg-slate-900/30 rounded-r-lg">
-                  {log.thought}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Terminal Block */}
-          {(log.toolInput || log.toolOutput) && (
-            <div className={`ml-4 sm:ml-6 rounded-lg overflow-hidden border bg-[#030712] ${getSeverityGlow(log.severity)}`}>
-              {/* Terminal Header */}
-              <div className="bg-slate-900/80 px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/5">
-                <div className="flex gap-1.5">
-                  <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500/30" />
-                  <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500/30" />
-                  <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500/30" />
-                </div>
-                <div className="text-[8px] sm:text-[10px] font-mono text-slate-500 flex items-center gap-1.5 sm:gap-2 truncate ml-2">
-                  <span className="text-emerald-400/60 uppercase truncate max-w-[80px] sm:max-w-none">
-                    {log.tool || 'terminal'}
-                  </span>
-                  <span className="hidden sm:inline">—</span>
-                  <span className="hidden sm:inline text-slate-600">
-                    session_id: {log.id?.split('-')[1] || '0'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Terminal Body */}
-              <div className="p-3 sm:p-4 font-mono text-[10px] sm:text-[11px] leading-relaxed overflow-x-auto">
-                {log.toolInput && (
-                  <div className="flex gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <span className="text-emerald-400 flex-shrink-0">$</span>
-                    <span className="text-slate-100 break-all">{log.toolInput}</span>
-                  </div>
-                )}
-                
-                {log.toolOutput && (
-                  <div className="text-slate-400 whitespace-pre-wrap break-all opacity-90 border-l border-white/5 pl-3 sm:pl-4 ml-1 max-h-48 sm:max-h-64 overflow-y-auto custom-scrollbar">
-                    {log.toolOutput}
-                  </div>
-                )}
-
-                {log.action && (
-                  <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
-                    <span className="text-cyan-400 font-bold uppercase tracking-tighter text-[9px] sm:text-[10px]">[RESULT]</span>
-                    <span className="text-slate-200 text-[10px] sm:text-[11px]">{log.action}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <LogEntry
+          key={log.id || `log-${index}`}
+          log={log}
+          index={index}
+          getSeverityGlow={getSeverityGlow}
+          getSeverityDotColor={getSeverityDotColor}
+          getSeverityBadgeStyle={getSeverityBadgeStyle}
+        />
       ))}
       
       <div ref={feedEndRef} className="h-4" />
+
+      {/* Scroll to bottom button - appears when user scrolls away from bottom */}
+      {showScrollToBottom && (
+        <button
+          onClick={scrollToBottom}
+          className="fixed bottom-20 lg:bottom-16 right-4 lg:right-auto lg:left-1/2 lg:-translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 bg-cyan-500/90 hover:bg-cyan-400 text-slate-950 rounded-full shadow-lg shadow-cyan-500/30 transition-all duration-200 hover:scale-105 animate-in fade-in slide-in-from-bottom-4"
+        >
+          <ICONS.ChevronDown className="w-4 h-4 animate-bounce" />
+          <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">
+            New Activity
+          </span>
+          <span className="text-[9px] sm:text-[10px] bg-slate-950/30 px-1.5 py-0.5 rounded">
+            {logs.length}
+          </span>
+        </button>
+      )}
     </div>
   );
 };

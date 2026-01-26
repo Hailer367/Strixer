@@ -1,0 +1,15 @@
+<tools>
+  <description>
+    StrixDB Monitoring Tools - Specialized tools for the StrixDB Agent to monitor system activity.
+  </description>
+
+  <tool>
+    <name>view_all_agents_activity</name>
+    <description>
+      View the activity (messages and tool outputs) of all other agents in the system.
+      Use this to proactively identify findings that should be saved to StrixDB or to provide guidance to agents having trouble.
+    </description>
+    <parameters>
+    </parameters>
+  </tool>
+</tools>

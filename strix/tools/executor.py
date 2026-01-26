@@ -171,6 +171,24 @@ async def execute_tool_with_validation(
 
     assert tool_name is not None
 
+    # StrixDB Exclusivity Check
+    if tool_name.startswith("strixdb_") and agent_state:
+        agent_name = getattr(agent_state, "agent_name", "")
+        if agent_name != "StrixDB Agent":
+            from strix.tools.agents_graph.agents_graph_actions import _agent_graph
+
+            # Find StrixDB Agent ID
+            strixdb_agent_id = "unknown"
+            for node_id, node_data in _agent_graph.get("nodes", {}).items():
+                if node_data.get("name") == "StrixDB Agent":
+                    strixdb_agent_id = node_id
+                    break
+
+            return (
+                f"Error: Access Denied. Only the StrixDB Agent has direct access to StrixDB. "
+                f"Please message the StrixDB Agent (ID: {strixdb_agent_id}) to store or retrieve information."
+            )
+
     arg_error = _validate_tool_arguments(tool_name, kwargs)
     if arg_error:
         return f"Error: {arg_error}"

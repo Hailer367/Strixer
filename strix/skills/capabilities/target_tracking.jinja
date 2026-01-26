@@ -1,57 +1,18 @@
 <target_tracking_system>
-## 🎯 TARGET TRACKING SYSTEM - NEVER LOSE CONTEXT!
+## 🎯 TARGET TRACKING SYSTEM - MANAGED BY STRIXDB AGENT
 
-You have access to the **StrixDB Target Tracking System** - a powerful feature that stores
-COMPREHENSIVE, DETAILED, UNFILTERED information about every target you scan.
+Target tracking is a powerful feature that ensures session continuity and comprehensive history for every target you scan. In this multi-agent system, target tracking is EXCLUSIVELY managed by the **StrixDB Agent**.
 
-### WHY USE TARGET TRACKING?
+### YOUR ROLE IN TARGET TRACKING:
 
-1. **NEVER REPEAT WORK**: When you start a new session, you'll know exactly what was tested before
-2. **COMPREHENSIVE HISTORY**: All findings, endpoints, notes, and technologies are preserved
-3. **SMART CONTINUATION**: Get recommendations on what to focus on based on previous work
-4. **FULL CONTEXT**: Load everything discovered in previous sessions instantly
+1. **STARTUP BRIEFING**: At the beginning of a scan, the StrixDB Agent will initialize tracking and provide you with a detailed briefing of previous work, suggested payloads, and priorities.
+2. **REPORT DISCOVERIES**: When you find a vulnerability, endpoint, or new technology, message the StrixDB Agent with the details. They will ensure it is recorded in the permanent target profile.
+3. **FOLLOW RECOMMENDATIONS**: The StrixDB Agent will guide your testing based on what remains to be tested from previous sessions.
 
-### MANDATORY WORKFLOW:
+### WHY IT MATTERS:
+- **NO REPETITION**: You'll be informed of what was already tested.
+- **FULL CONTEXT**: You'll have access to successful payloads and history from past scans.
+- **SMART HANDOFF**: Your work today will be preserved to help future agents (or yourself) in the next session.
 
-**Starting a Scan:**
-```
-1. strixdb_target_init(target="...", target_type="...", description="...")
-   - If target exists: Review previous work and pending items
-   - If new: Creates fresh target profile
-
-2. strixdb_target_session_start(target="...", objective="...", focus_areas=[...])
-   - ALWAYS call this at the start of each session!
-   - Loads all previous context
-   - Returns: what's been tested, pending work, recommendations
-```
-
-**During Scanning (STORE EVERYTHING!):**
-```
-- strixdb_target_add_finding() - EVERY vulnerability, with full PoC!
-- strixdb_target_add_endpoint() - EVERY endpoint discovered
-- strixdb_target_add_technology() - EVERY technology identified
-- strixdb_target_update_progress() - Mark what you've tested
-```
-
-**Ending a Session:**
-```
-strixdb_target_session_end(
-    target="...",
-    session_id="...",
-    summary="Comprehensive summary",
-    accomplishments=["What you did"],
-    immediate_follow_ups=["What to do next - HIGH PRIORITY"],
-    promising_leads=["Interesting areas to investigate"]
-)
-```
-
-### CRITICAL RULES:
-
-1. **BE COMPREHENSIVE**: Store EVERYTHING. If in doubt, save it!
-2. **NO REPETITION**: Check previous work before testing the same thing
-3. **DETAILED FINDINGS**: Include full PoC, steps, impact, remediation
-4. **TRACK PROGRESS**: Update what areas have been tested
-5. **SMART HANDOFF**: End sessions with detailed continuation notes
-
-**USE THIS SYSTEM FOR EVERY SCAN! STORE EVERYTHING USEFUL!**
+**ALWAYS COORDINATE WITH THE STRIXDB AGENT FOR TARGET TRACKING!**
 </target_tracking_system>

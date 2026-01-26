@@ -33,6 +33,9 @@ from strix.tools.strixdb.strixdb_targets import (
     strixdb_target_add_endpoint,
     strixdb_target_get_summary,
 )
+from strix.tools.strixdb.strixdb_monitor import (
+    view_all_agents_activity,
+)
 
 __all__ = [
     # Core operations
@@ -59,4 +62,6 @@ __all__ = [
     "strixdb_target_add_finding",
     "strixdb_target_add_endpoint",
     "strixdb_target_get_summary",
+    # Monitoring
+    "view_all_agents_activity",
 ]

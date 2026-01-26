@@ -346,49 +346,6 @@ class BaseAgent(metaclass=AgentMeta):
         if not self.state.task:
             self.state.task = task
 
-        # Passive Startup: Check StrixDB for target history and initialize tracking
-        if self.state.parent_id is None: # Only root agent does this
-            target = os.getenv("SCAN_TARGET", "")
-            if target:
-                try:
-                    from strix.tools.strixdb import strixdb_actions, strixdb_targets
-                    
-                    # 1. Initialize Target Tracking in StrixDB
-                    self.state.add_message("system", f"Initializing StrixDB target tracking for: {target}")
-                    init_res = strixdb_targets.strixdb_target_init(
-                        agent_state=self.state,
-                        target=target,
-                        target_type="web_app", # Default
-                        description=f"Automated security assessment of {target}"
-                    )
-                    
-                    # 2. Start Tracking Session
-                    session_res = strixdb_targets.strixdb_target_session_start(
-                        agent_state=self.state,
-                        target=target,
-                        objective=task
-                    )
-                    
-                    if "session_id" in session_res:
-                        self.state.strixdb_session_id = session_res["session_id"]
-                        self.state.add_message("system", f"StrixDB Tracking Session Started: {session_res['session_id']}")
-                        
-                        if session_res.get("previous_work"):
-                             self.state.add_message("system", f"Retrieved Context: {json.dumps(session_res.get('previous_work'))}")
-
-                    # 3. Passive Search: Find relevant artifacts in StrixDB
-                    search_res = strixdb_actions.strixdb_search(
-                        agent_state=self.state,
-                        query=target,
-                        limit=5
-                    )
-                    if search_res.get("success") and search_res.get("results"):
-                        msg = f"PASSIVE STARTUP: Found {len(search_res['results'])} relevant artifacts in StrixDB."
-                        self.state.add_message("system", msg)
-                        
-                except Exception as e:
-                    logger.warning(f"Passive startup failed: {e}")
-
         # Arsenal Intelligence: Notify agent of all capabilities
         if self.state.parent_id is None:
             try:
